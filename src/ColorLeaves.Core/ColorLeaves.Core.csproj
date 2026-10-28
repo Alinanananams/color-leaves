@@ -4,6 +4,7 @@
     <RootNamespace>ColorLeaves.Core</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Nice3point.Revit.Api" Version="2021.*"/>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2021.*"/>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2021.*"/>
   </ItemGroup>
 </Project>

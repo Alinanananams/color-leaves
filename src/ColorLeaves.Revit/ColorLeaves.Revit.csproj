@@ -9,6 +9,11 @@
     <ProjectReference Include="..\ColorLeaves.Core\ColorLeaves.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Nice3point.Revit.Api" Version="2021.*"/>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2021.*"/>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2021.*"/>
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Resources\icon_small.png" />
+    <Resource Include="Resources\icon_large.png" />
   </ItemGroup>
 </Project>

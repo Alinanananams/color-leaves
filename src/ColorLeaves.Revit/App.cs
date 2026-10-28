@@ -8,7 +8,6 @@ using ColorLeaves.Revit.Commands;
 
 namespace ColorLeaves.Revit;
 
-[Transaction(TransactionMode.Manual)]
 public class App : IExternalApplication
 {
     public Result OnStartup(UIControlledApplication application)
