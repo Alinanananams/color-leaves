@@ -9,30 +9,6 @@
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-  </PropertyGroup>
-
-  <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" $(Configuration.Contains('R21')) ">
     <RevitYear>2021</RevitYear>
-    <OutputPath>bin\$(Configuration)\2021\</OutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition=" $(Configuration.Contains('R22')) ">
-    <RevitYear>2022</RevitYear>
-    <OutputPath>bin\$(Configuration)\2022\</OutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition=" $(Configuration.Contains('R23')) ">
-    <RevitYear>2023</RevitYear>
-    <OutputPath>bin\$(Configuration)\2023\</OutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition=" $(Configuration.Contains('R24')) ">
-    <RevitYear>2024</RevitYear>
-    <OutputPath>bin\$(Configuration)\2024\</OutputPath>
-  </PropertyGroup>
-  <PropertyGroup Condition=" $(Configuration.Contains('R25')) ">
-    <RevitYear>2025</RevitYear>
-    <OutputPath>bin\$(Configuration)\2025\</OutputPath>
   </PropertyGroup>
 </Project>

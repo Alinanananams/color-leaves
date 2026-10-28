@@ -18,14 +18,14 @@
 src/ColorLeaves.Core/        # Модели, константы, утилиты (без UI и Revit-команд)
 src/ColorLeaves.Revit/       # Точка входа (App), Commands/, Services/, UI/, Resources/
 build/ColorLeaves.sln        # Решение
-addins/<год>/ColorLeaves.addin  # Манифесты по версиям Revit
+addins/2021/ColorLeaves.addin   # Манифест для Revit 2021
 DOCS/                        # Планы фич
 ```
 
 ## Сборка и запуск
 
 ```sh
-dotnet build build/ColorLeaves.sln -c Debug.R21   # конфигурации R21…R25
+dotnet build build/ColorLeaves.sln -c Debug
 build-and-deploy.bat                              # сборка + деплой в %APPDATA%
 ```
 

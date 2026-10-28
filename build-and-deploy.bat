@@ -1,14 +1,20 @@
 @echo off
-REM Сборка и деплой Color Leaves
+REM Сборка и деплой Color Leaves (Revit 2021)
 REM Требуется .NET SDK 8 или выше
 
 setlocal
 
-REM Собираем для каждой конфигурации
-for %%c in (Debug.R21, Debug.R22, Debug.R23, Debug.R24, Debug.R25) do (
-    echo Building %%c ...
-    dotnet build build\ColorLeaves.sln -c %%c
-)
+echo Building Debug ...
+dotnet build build\ColorLeaves.sln -c Debug
+if errorlevel 1 goto :error
 
-echo Build complete.
+echo.
+echo Build complete. Деплой в %%APPDATA%%\Autodesk\Revit\Addins\2021 выполнен при сборке.
 pause
+exit /b 0
+
+:error
+echo.
+echo ОШИБКА СБОРКИ. Подробности выше.
+pause
+exit /b 1
