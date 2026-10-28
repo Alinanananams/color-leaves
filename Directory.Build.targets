@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
-  <Target Name="CopyAddin" AfterTargets="Build">
+  <Target Name="CopyAddin" AfterTargets="Build" Condition="'$(MSBuildProjectName)' == 'ColorLeaves.Revit'">
     <PropertyGroup>
       <AddinFile>$(MSBuildThisFileDirectory)addins\$(RevitYear)\ColorLeaves.addin</AddinFile>
       <DeployDir>$(APPDATA)\Autodesk\Revit\Addins\$(RevitYear)\</DeployDir>
     </PropertyGroup>
     <MakeDir Directories="$(DeployDir)" />
     <Copy SourceFiles="$(AddinFile)" DestinationFolder="$(DeployDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(DeployDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(OutputPath)ColorLeaves.Core.dll" DestinationFolder="$(DeployDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>
