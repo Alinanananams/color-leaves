@@ -1,68 +1,144 @@
 using System;
+using System.IO;
+using System.Reflection;
 using System.Windows.Media.Imaging;
-using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
-using ColorLeaves.Core.Constants;
-using ColorLeaves.Revit.Commands;
+using Autodesk.Revit.UI.Events;
+using ColorLeaves.Core;
+using ColorLeaves.Revit.UI;
 
 namespace ColorLeaves.Revit;
 
 public class App : IExternalApplication
 {
-    public Result OnStartup(UIControlledApplication application)
-    {
-        try
-        {
-            // Вкладку нужно создать явно, прежде чем добавлять на неё панель
-            application.CreateRibbonTab(PluginConstants.TabName);
+	public const string RibbonTabName = "Цветные листики";
 
-            var panel = application.CreateRibbonPanel(PluginConstants.TabName, PluginConstants.PanelName);
+	public const string PaneName = "Цветные листики";
 
-            var buttonData = new PushButtonData(
-                "ColorSheets",
-                "Цветные листики",
-                typeof(App).Assembly.Location,
-                typeof(ColorSheetsCommand).FullName)
-            {
-                ToolTip = "Запуск команды раскраски листов",
-                LongDescription = "Плагин Color Leaves — автоматизация раскраски листов по сборкам",
-                AvailabilityClassName = typeof(AlwaysAvailable).FullName
-            };
+	public static readonly Guid PaneId = new Guid("3A8F61D4-9C27-4E85-B1A0-7F62D4C93E15");
 
-            try
-            {
-                buttonData.LargeImage = new BitmapImage(new Uri("pack://application:,,,/ColorLeaves.Revit;component/Resources/icon_large.png"));
-                buttonData.Image = new BitmapImage(new Uri("pack://application:,,,/ColorLeaves.Revit;component/Resources/icon_small.png"));
-            }
-            catch (Exception iconEx)
-            {
-                // Отсутствие иконок не должно мешать работе плагина
-                System.Diagnostics.Debug.WriteLine("Не удалось загрузить иконки: " + iconEx.Message);
-            }
+	public Result OnStartup(UIControlledApplication application)
+	{
+		//IL_0042: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0010: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0024: Expected O, but got Unknown
+		//IL_007b: Unknown result type (might be due to invalid IL or missing references)
+		Log.Write("OnStartup: начало");
+		try
+		{
+			application.RegisterDockablePane(new DockablePaneId(PaneId), "Цветные листики", (IDockablePaneProvider)(object)new SheetPaneProvider());
+			Log.Write("OnStartup: панель зарегистрирована");
+		}
+		catch (Exception ex)
+		{
+			Log.Write("OnStartup: ОШИБКА регистрации панели: " + ex);
+			return (Result)0;
+		}
+		application.ViewActivated += OnViewActivated;
+		application.Idling += OnIdling;
+		CreateRibbon(application);
+		Log.Write("OnStartup: завершено");
+		return (Result)0;
+	}
 
-            panel.AddItem(buttonData);
-            return Result.Succeeded;
-        }
-        catch (Exception ex)
-        {
-            var dialog = new TaskDialog("Color Leaves — ошибка запуска")
-            {
-                MainInstruction = "Не удалось инициализировать плагин.",
-                MainContent = ex.ToString(),
-                MainIcon = TaskDialogIcon.TaskDialogIconError
-            };
-            dialog.Show();
-            return Result.Failed;
-        }
-    }
+	public Result OnShutdown(UIControlledApplication application)
+	{
+		application.ViewActivated -= OnViewActivated;
+		application.Idling -= OnIdling;
+		Log.Write("OnShutdown");
+		return (Result)0;
+	}
 
-    public Result OnShutdown(UIControlledApplication application)
-    {
-        return Result.Succeeded;
-    }
-}
+	private void OnViewActivated(object sender, ViewActivatedEventArgs e)
+	{
+		try
+		{
+			Bridge.SetDocument(((RevitAPIPostDocEventArgs)e).Document);
+			Log.Write("ViewActivated: документ сменён");
+		}
+		catch (Exception ex)
+		{
+			Log.Write("ViewActivated: ошибка " + ex.Message);
+		}
+	}
 
-public class AlwaysAvailable : IExternalCommandAvailability
-{
-    public bool IsCommandAvailable(UIApplication applicationData, CategorySet selectedCategories) => true;
+	private void OnIdling(object sender, IdlingEventArgs e)
+	{
+		try
+		{
+			Bridge.Tick();
+		}
+		catch (Exception ex)
+		{
+			Log.Write("Idling: " + ex.Message);
+		}
+	}
+
+	private static void CreateRibbon(UIControlledApplication application)
+	{
+		//IL_0050: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0056: Expected O, but got Unknown
+		//IL_0066: Unknown result type (might be due to invalid IL or missing references)
+		//IL_006c: Expected O, but got Unknown
+		//IL_007c: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0083: Expected O, but got Unknown
+		//IL_0093: Unknown result type (might be due to invalid IL or missing references)
+		//IL_009a: Expected O, but got Unknown
+		try
+		{
+			try
+			{
+				application.CreateRibbonTab("Цветные листики");
+				Log.Write("Вкладка «Цветные листики» создана");
+			}
+			catch (Exception)
+			{
+				Log.Write("Вкладка «Цветные листики» уже существует");
+			}
+			RibbonPanel val = application.CreateRibbonPanel("Цветные листики", "Цветные листики");
+			string location = Assembly.GetExecutingAssembly().Location;
+			PushButtonData val2 = new PushButtonData("ColorLeaves_Show", "Показать\nлисты", location, "ColorLeaves.Revit.Commands.ShowPaneCommand");
+			PushButtonData val3 = new PushButtonData("ColorLeaves_Refresh", "Обновить", location, "ColorLeaves.Revit.Commands.RefreshCommand");
+			PushButtonData val4 = new PushButtonData("ColorLeaves_Colors", "Цвета\nстадий", location, "ColorLeaves.Revit.Commands.ColorsCommand");
+			PushButtonData val5 = new PushButtonData("ColorLeaves_CreateParameter", "Создать\nпараметр", location, "ColorLeaves.Revit.Commands.CreateParameterCommand");
+			ApplyIcon(val2, "sheet.png");
+			ApplyIcon(val3, "refresh.png");
+			ApplyIcon(val4, "colors.png");
+			ApplyIcon(val5, "parameter.png");
+			val.AddItem((RibbonItemData)(object)val2);
+			val.AddItem((RibbonItemData)(object)val3);
+			val.AddItem((RibbonItemData)(object)val4);
+			val.AddItem((RibbonItemData)(object)val5);
+			Log.Write("Лента создана на вкладке «Цветные листики»");
+		}
+		catch (Exception ex2)
+		{
+			Log.Write("Лента: ОШИБКА " + ex2.Message);
+		}
+	}
+
+	private static void ApplyIcon(PushButtonData data, string fileName)
+	{
+		try
+		{
+			string directoryName = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+			string text = Path.Combine(directoryName, fileName);
+			if (File.Exists(text))
+			{
+				BitmapImage bitmapImage = new BitmapImage();
+				bitmapImage.BeginInit();
+				bitmapImage.UriSource = new Uri(text, UriKind.Absolute);
+				bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+				bitmapImage.EndInit();
+				bitmapImage.Freeze();
+				((ButtonData)data).Image = bitmapImage;
+				((ButtonData)data).LargeImage = bitmapImage;
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Write("Иконка " + fileName + " не загружена: " + ex.Message);
+		}
+	}
 }

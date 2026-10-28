@@ -2,6 +2,7 @@
   <PropertyGroup>
     <AssemblyName>ColorLeaves.Core</AssemblyName>
     <RootNamespace>ColorLeaves.Core</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2021.*"/>

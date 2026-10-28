@@ -1,4 +1,4 @@
-namespace ColorLeaves.Core.Models;
+﻿namespace ColorLeaves.Core.Models;
 
 public class SheetInfo
 {
