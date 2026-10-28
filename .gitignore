@@ -1,0 +1,20 @@
+# Build outputs
+bin/
+obj/
+*.log
+
+# Visual Studio
+.vs/
+.idea/
+*.suo
+*.user
+*.sln.iml
+
+# Packages
+packages/
+
+# Старые файлы проекта
+Обработка.txt
+Установка.bat
+Установочный Цветные листики.exe
+Установка плагина.bat
