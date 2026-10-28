@@ -2,7 +2,6 @@ using System;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using Autodesk.Revit.UI.Selection;
 using ColorLeaves.Revit.Services;
 
 namespace ColorLeaves.Revit.Commands;
@@ -12,9 +11,15 @@ public class ColorSheetsCommand : IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
+        var uiDoc = commandData.Application.ActiveUIDocument;
+        if (uiDoc == null)
+        {
+            TaskDialog.Show("Color Leaves", "Откройте проект и повторите команду.");
+            return Result.Cancelled;
+        }
+
         try
         {
-            var uiDoc = commandData.Application.ActiveUIDocument;
             var doc = uiDoc.Document;
 
             var service = new SheetColorService(doc);
@@ -25,6 +30,15 @@ public class ColorSheetsCommand : IExternalCommand
         }
         catch (Exception ex)
         {
+            // Показываем полный текст исключения, чтобы сбои были диагностируемыми
+            var dialog = new TaskDialog("Color Leaves — ошибка")
+            {
+                MainInstruction = "При выполнении команды произошла ошибка.",
+                MainContent = ex.ToString(),
+                MainIcon = TaskDialogIcon.TaskDialogIconError
+            };
+            dialog.Show();
+
             message = ex.Message;
             return Result.Failed;
         }
