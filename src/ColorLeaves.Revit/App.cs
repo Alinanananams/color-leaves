@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Windows.Media.Imaging;
+using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
@@ -68,7 +69,10 @@ public class App : IExternalApplication
 	{
 		try
 		{
-			Bridge.SetDocument(((RevitAPIPostDocEventArgs)e).Document);
+			// Фиксируем UIApplication как можно раньше — без него не работает переход к листу
+			Document doc = ((RevitAPIPostDocEventArgs)e).Document;
+			Bridge.SetUiApp(new UIApplication(doc.Application));
+			Bridge.SetDocument(doc);
 			Log.Write("ViewActivated: документ сменён");
 		}
 		catch (Exception ex)
