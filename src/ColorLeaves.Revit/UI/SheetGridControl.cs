@@ -791,6 +791,9 @@ public class SheetGridControl : UserControl
 
 	private void OnDiagClick(object sender, EventArgs e)
 	{
+		// Тест записи меняет модель — выполняется в безопасном контексте через очередь
+		Bridge.RequestVerifyWrite();
+		Bridge.RequestRefresh();
 		StageParamDiag diag = Bridge.Diag;
 		StringBuilder stringBuilder = new StringBuilder();
 		stringBuilder.AppendLine("Листов в проекте: " + diag.SheetsTotal);

@@ -11,10 +11,6 @@ namespace ColorLeaves.Revit;
 
 public static class Bridge
 {
-	private static readonly TimeSpan MinScanInterval = new TimeSpan(0, 0, 1, 0);
-
-	private static readonly TimeSpan CentralCheckInterval = new TimeSpan(0, 0, 0, 30);
-
 	private static Document _document;
 
 	private static UIApplication _uiApp;
@@ -22,8 +18,6 @@ public static class Bridge
 	private static List<SheetRow> _rows = new List<SheetRow>();
 
 	private static List<PendingStage> _pending = new List<PendingStage>();
-
-	private static DateTime _lastScan = DateTime.MinValue;
 
 	private static bool _forceScan = true;
 
@@ -35,6 +29,10 @@ public static class Bridge
 
 	private static bool _paramCreateTried;
 
+	private static bool _verifyRequested;
+
+	private static bool _workshareCheckRequested;
+
 	private static string _message = "";
 
 	private static bool _hasStageParameter;
@@ -43,8 +41,6 @@ public static class Bridge
 
 	private static string _lastStamp = "";
 
-	private static bool _verifiedDocument;
-
 	private static bool _unsetFilled;
 
 	private static bool _isWorkshared;
@@ -52,8 +48,6 @@ public static class Bridge
 	private static bool _hasChangesFromCentral;
 
 	private static DateTime _lastSyncTime = DateTime.MinValue;
-
-	private static DateTime _lastCentralCheck = DateTime.MinValue;
 
 	private static string _lastDiagState = "";
 
@@ -86,11 +80,26 @@ public static class Bridge
 	public static void SetUiApp(UIApplication app)
 	{
 		_uiApp = app;
+		_workshareCheckRequested = true;
 		if (app != null && app.ActiveUIDocument != null)
 		{
 			SetDocument(app.ActiveUIDocument.Document);
 		}
 		RequestRefresh();
+	}
+
+	/// <summary>Запросить проверку занятости листов и статуса центральной модели (тяжёлая операция — по требованию).</summary>
+	public static void RequestWorkshareCheck()
+	{
+		_workshareCheckRequested = true;
+		_forceScan = true;
+	}
+
+	/// <summary>Запросить диагностический тест записи в параметр стадии.</summary>
+	public static void RequestVerifyWrite()
+	{
+		_verifyRequested = true;
+		_forceScan = true;
 	}
 
 	public static void SetDocument(Document doc)
@@ -100,7 +109,7 @@ public static class Bridge
 		if (flag)
 		{
 			_forceScan = true;
-			_verifiedDocument = false;
+			// точечная проверка записи теперь только по кнопке «Диагностика»
 			_unsetFilled = false;
 			_paramCreateTried = false;
 		}
@@ -192,13 +201,15 @@ public static class Bridge
 		_forceScan = true;
 	}
 
+	/// <summary>Есть ли запрошенная работа для одноразового Idling. Плагин не делает ничего в простое.</summary>
+	public static bool HasQueuedWork => _forceScan;
+
 	public static void Tick()
 	{
-		if (_document == null || (!_forceScan && DateTime.UtcNow - _lastScan < MinScanInterval))
+		if (_document == null || !_forceScan)
 		{
 			return;
 		}
-		_lastScan = DateTime.UtcNow;
 		_forceScan = false;
 		try
 		{
@@ -236,9 +247,17 @@ public static class Bridge
 				_fillUnsetRequested = false;
 				FillUnsetStagesOnce();
 			}
+			if (_verifyRequested)
+			{
+				_verifyRequested = false;
+				VerifyWriteNow();
+			}
 			ApplyPending();
-			VerifyWriteOnce();
-			CheckCentralStatus();
+			if (_workshareCheckRequested)
+			{
+				_workshareCheckRequested = false;
+				CheckCentralStatus();
+			}
 			_diag = SheetReader.Diagnose(_document);
 			_hasStageParameter = _diag.Writable;
 			if (!_hasStageParameter)
@@ -322,7 +341,7 @@ public static class Bridge
 		return stringBuilder.ToString();
 	}
 
-	private static void VerifyWriteOnce()
+	private static void VerifyWriteNow()
 	{
 		//IL_01f5: Unknown result type (might be due to invalid IL or missing references)
 		//IL_01fc: Expected O, but got Unknown
@@ -338,11 +357,10 @@ public static class Bridge
 		//IL_01b6: Expected O, but got Unknown
 		//IL_01b8: Unknown result type (might be due to invalid IL or missing references)
 		//IL_01cd: Unknown result type (might be due to invalid IL or missing references)
-		if (_verifiedDocument)
+		if (_document == null)
 		{
 			return;
 		}
-		_verifiedDocument = true;
 		try
 		{
 			Log.Write("Состояние документа: IsReadOnly=" + _document.IsReadOnly + ", IsModifiable=" + _document.IsModifiable + ", IsReadOnlyFile=" + _document.IsReadOnlyFile + ", IsFamilyDocument=" + _document.IsFamilyDocument + ", Path=" + _document.PathName);
@@ -448,40 +466,32 @@ public static class Bridge
 		if (!_isWorkshared)
 		{
 			_hasChangesFromCentral = false;
-			_lastCentralCheck = DateTime.MinValue;
 			RefreshLockedOwners();
+			return;
 		}
-		else
+		bool hasChangesFromCentral = _hasChangesFromCentral;
+		try
 		{
-			if (DateTime.UtcNow - _lastCentralCheck < CentralCheckInterval)
-			{
-				return;
-			}
-			_lastCentralCheck = DateTime.UtcNow;
-			bool hasChangesFromCentral = _hasChangesFromCentral;
-			try
-			{
-				_hasChangesFromCentral = _document.HasAllChangesFromCentral();
-			}
-			catch (Exception ex)
-			{
-				if (ex.Message != _lastIdleError)
-				{
-					Log.Write("Проверка центра: " + ex.Message);
-					_lastIdleError = ex.Message;
-				}
-				return;
-			}
-			if (_hasChangesFromCentral != hasChangesFromCentral)
-			{
-				Log.Write("Центральная модель: " + (_hasChangesFromCentral ? "есть изменения, которых нет у нас" : "расхождений нет"));
-			}
-			if (_hasChangesFromCentral)
-			{
-				MarkCentralUpdates();
-			}
-			RefreshLockedOwners();
+			_hasChangesFromCentral = _document.HasAllChangesFromCentral();
 		}
+		catch (Exception ex)
+		{
+			if (ex.Message != _lastIdleError)
+			{
+				Log.Write("Проверка центра: " + ex.Message);
+				_lastIdleError = ex.Message;
+			}
+			return;
+		}
+		if (_hasChangesFromCentral != hasChangesFromCentral)
+		{
+			Log.Write("Центральная модель: " + (_hasChangesFromCentral ? "есть изменения, которых нет у нас" : "расхождений нет"));
+		}
+		if (_hasChangesFromCentral)
+		{
+			MarkCentralUpdates();
+		}
+		RefreshLockedOwners();
 	}
 
 	private static void MarkCentralUpdates()
@@ -535,7 +545,6 @@ public static class Bridge
 			val2.Comment = "Синхронизация из «Цветных листиков»";
 			_document.SynchronizeWithCentral(val, val2);
 			_lastSyncTime = DateTime.Now;
-			_lastCentralCheck = DateTime.MinValue;
 			_forceScan = true;
 			RequestRefresh();
 			List<SheetRow> list = SheetReader.Read(_document);

@@ -39,6 +39,7 @@ public class App : IExternalApplication
 		application.ViewActivated += OnViewActivated;
 		application.Idling += OnIdling;
 		application.ControlledApplication.DocumentChanged += OnDocumentChanged;
+		application.DockableFrameVisibilityChanged += OnDockableFrameVisibilityChanged;
 		CreateRibbon(application);
 		Log.Write("OnStartup: завершено");
 		return (Result)0;
@@ -49,6 +50,7 @@ public class App : IExternalApplication
 		application.ViewActivated -= OnViewActivated;
 		application.Idling -= OnIdling;
 		application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
+		application.DockableFrameVisibilityChanged -= OnDockableFrameVisibilityChanged;
 		Log.Write("OnShutdown");
 		return (Result)0;
 	}
@@ -85,11 +87,34 @@ public class App : IExternalApplication
 	{
 		try
 		{
+			// Одноразовый паттерн: при простое плагин не делает ничего.
+			// Работа выполняется только когда пользователь что-то запросил
+			if (!Bridge.HasQueuedWork)
+			{
+				return;
+			}
 			Bridge.Tick();
 		}
 		catch (Exception ex)
 		{
 			Log.Write("Idling: " + ex.Message);
+		}
+	}
+
+	private void OnDockableFrameVisibilityChanged(object sender, DockableFrameVisibilityChangedEventArgs e)
+	{
+		try
+		{
+			// При изменении видимости нашей панели — обновить занятость листов и данные
+			if (e.PaneId == new DockablePaneId(PaneId))
+			{
+				Bridge.RequestWorkshareCheck();
+				Bridge.RequestRefresh();
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Write("DockableFrameVisibilityChanged: " + ex.Message);
 		}
 	}
 
