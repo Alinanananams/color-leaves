@@ -201,7 +201,7 @@ public class SheetGridControl : UserControl
 		DataGridViewTextBoxColumn numberColumn = new DataGridViewTextBoxColumn();
 		numberColumn.HeaderText = "№ листа  (двойной клик — открыть)";
 		numberColumn.Name = "Number";
-		numberColumn.Width = 150;
+		numberColumn.Width = 190;
 		numberColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
 		DataGridViewTextBoxColumn nameColumn = new DataGridViewTextBoxColumn();
 		nameColumn.HeaderText = "Наименование";
