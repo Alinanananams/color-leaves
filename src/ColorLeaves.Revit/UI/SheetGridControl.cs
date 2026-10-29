@@ -19,6 +19,8 @@ public class SheetGridControl : UserControl
 
 	private const int ColStage = 2;
 
+	private const int HeaderRowHeight = 26;
+
 	/// <summary>Маркер строки-разделителя группы (группировка по стадиям).</summary>
 	private class GroupHeader
 	{
@@ -84,7 +86,7 @@ public class SheetGridControl : UserControl
 		_search.Width = 150;
 		_search.TextBox.TextChanged += delegate
 		{
-			ApplyFilter();
+			RebuildGrid();
 		};
 		ToolStripButton clearButton = new ToolStripButton("Очистить");
 		clearButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
@@ -102,7 +104,7 @@ public class SheetGridControl : UserControl
 			if (!_suppress)
 			{
 				SaveUiState();
-				ApplyFilter();
+				RebuildGrid();
 			}
 		};
 		_groupButton = new ToolStripButton("Группировать");
@@ -260,7 +262,7 @@ public class SheetGridControl : UserControl
 		{
 			SyncStageFilterItems();
 			_groupButton.Checked = StageSettings.Instance.GroupByStage;
-			DataGridViewComboBoxColumn stageColumn = _grid.Columns[2] as DataGridViewComboBoxColumn;
+			DataGridViewComboBoxColumn stageColumn = _grid.Columns[ColStage] as DataGridViewComboBoxColumn;
 			List<string> names = StageSettings.Instance.Names;
 			if (stageColumn != null && !SameItems(stageColumn, names))
 			{
@@ -268,19 +270,17 @@ public class SheetGridControl : UserControl
 			}
 			foreach (DataGridViewColumn column in _grid.Columns)
 			{
-				column.ReadOnly = column.Index != 2;
+				column.ReadOnly = column.Index != ColStage;
 			}
-			_grid.Columns[2].ReadOnly = !Bridge.CanEditStage;
+			_grid.Columns[ColStage].ReadOnly = !Bridge.CanEditStage;
 			_autoButton.Enabled = Bridge.CanEditStage;
-			bool editable = !_grid.Columns[2].ReadOnly;
+			bool editable = !_grid.Columns[ColStage].ReadOnly;
 			if (editable != _lastEditable)
 			{
 				_lastEditable = editable;
-				Log.Write(string.Concat("Колонка «Стадия» редактируема: ", editable, " (CanEditStage=", Bridge.CanEditStage, ", источник значений: ", stageColumn.DataSource, ")"));
+				Log.Write(string.Concat("Колонка «Стадия» редактируема: ", editable, " (CanEditStage=", Bridge.CanEditStage, ")"));
 			}
-			List<SheetRow> rows = Bridge.Rows;
-			SyncRows(rows);
-			ApplyFilter();
+			RebuildGrid();
 			_status.Text = Bridge.Message;
 			_status.ForeColor = (Bridge.CanEditStage ? Color.FromArgb(150, 90, 0) : Color.FromArgb(190, 30, 30));
 			_diagButton.Enabled = Bridge.HasDocument;
@@ -383,94 +383,120 @@ public class SheetGridControl : UserControl
 		return true;
 	}
 
-	private void SyncRows(List<SheetRow> data)
+	private static bool Matches(SheetRow row, string query, string stageFilter)
 	{
-		List<object> display = BuildDisplayList(data);
-		bool same = display.Count == _grid.Rows.Count;
-		if (same)
+		bool matchesQuery = query.Length == 0 || Contains(row.Number, query) || Contains(row.Name, query) || Contains(row.Stage, query);
+		bool matchesStage = stageFilter == null || string.Equals(row.Stage, stageFilter, StringComparison.Ordinal);
+		return matchesQuery && matchesStage;
+	}
+
+	/// <summary>
+	/// Перестраивает строки таблицы: применяет поиск, фильтр по стадии и группировку.
+	/// Фильтрация выполняется перестройкой (а не скрытием строк) — это исключает
+	/// артефакты отрисовки DataGridView при переключении row.Visible.
+	/// </summary>
+	private void RebuildGrid()
+	{
+		if (_grid == null)
 		{
-			for (int i = 0; i < display.Count; i++)
+			return;
+		}
+		List<SheetRow> all = Bridge.Rows;
+		string query = (_search.TextBox.Text ?? "").Trim();
+		string stageFilter = CurrentStageFilter();
+		bool grouping = _groupButton.Checked;
+
+		// Запоминаем выделенный лист, чтобы вернуть выделение после перестройки
+		int selectedId = 0;
+		if (_grid.CurrentRow?.Tag is SheetRow selected)
+		{
+			selectedId = selected.Id;
+		}
+
+		List<object> display = new List<object>();
+		if (!grouping)
+		{
+			foreach (SheetRow row in all)
 			{
-				if (!SameRowItem(_grid.Rows[i].Tag, display[i]))
+				if (Matches(row, query, stageFilter))
 				{
-					same = false;
-					break;
+					display.Add(row);
 				}
 			}
 		}
+		else
+		{
+			List<SheetRow> rest = new List<SheetRow>(all);
+			foreach (string name in StageSettings.Instance.Names)
+			{
+				List<SheetRow> group = rest.FindAll((SheetRow r) => string.Equals(r.Stage, name, StringComparison.Ordinal) && Matches(r, query, stageFilter));
+				if (group.Count > 0)
+				{
+					display.Add(new GroupHeader
+					{
+						Title = name + " — " + group.Count + " " + PluralSheets(group.Count)
+					});
+					display.AddRange(group);
+					foreach (SheetRow item in group)
+					{
+						rest.Remove(item);
+					}
+				}
+			}
+			List<SheetRow> others = rest.FindAll((SheetRow r) => Matches(r, query, stageFilter));
+			if (others.Count > 0)
+			{
+				display.Add(new GroupHeader
+				{
+					Title = "Прочие — " + others.Count + " " + PluralSheets(others.Count)
+				});
+				display.AddRange(others);
+			}
+		}
+
 		_grid.SuspendLayout();
 		try
 		{
-			if (same)
+			_grid.Rows.Clear();
+			foreach (object item in display)
 			{
-				for (int j = 0; j < display.Count; j++)
-				{
-					FillRow(_grid.Rows[j], display[j]);
-				}
-			}
-			else
-			{
-				_grid.Rows.Clear();
-				foreach (object item in display)
-				{
-					int index = _grid.Rows.Add();
-					FillRow(_grid.Rows[index], item);
-				}
+				int index = _grid.Rows.Add();
+				FillRow(_grid.Rows[index], item);
 			}
 		}
 		finally
 		{
 			_grid.ResumeLayout();
 		}
-	}
 
-	private static bool SameRowItem(object tag, object item)
-	{
-		if (tag is SheetRow sheetRow && item is SheetRow sheetRow2)
+		// Восстанавливаем выделение
+		if (selectedId != 0)
 		{
-			return sheetRow.Id == sheetRow2.Id;
-		}
-		if (tag is GroupHeader groupHeader && item is GroupHeader groupHeader2)
-		{
-			return string.Equals(groupHeader.Title, groupHeader2.Title, StringComparison.Ordinal);
-		}
-		return false;
-	}
-
-	private List<object> BuildDisplayList(List<SheetRow> data)
-	{
-		List<object> list = new List<object>();
-		if (!_groupButton.Checked)
-		{
-			list.AddRange(data);
-			return list;
-		}
-		List<SheetRow> rest = new List<SheetRow>(data);
-		foreach (string name in StageSettings.Instance.Names)
-		{
-			List<SheetRow> group = rest.FindAll((SheetRow r) => string.Equals(r.Stage, name, StringComparison.Ordinal));
-			if (group.Count > 0)
+			foreach (DataGridViewRow row in _grid.Rows)
 			{
-				list.Add(new GroupHeader
+				if (row.Tag is SheetRow sheetRow && sheetRow.Id == selectedId)
 				{
-					Title = name + " — " + group.Count + " " + PluralSheets(group.Count)
-				});
-				list.AddRange(group);
-				foreach (SheetRow item in group)
-				{
-					rest.Remove(item);
+					try
+					{
+						_grid.CurrentCell = row.Cells[ColNumber];
+					}
+					catch
+					{
+					}
+					break;
 				}
 			}
 		}
-		if (rest.Count > 0)
+
+		int visibleSheets = 0;
+		foreach (object item in display)
 		{
-			list.Add(new GroupHeader
+			if (item is SheetRow)
 			{
-				Title = "Прочие — " + rest.Count + " " + PluralSheets(rest.Count)
-			});
-			list.AddRange(rest);
+				visibleSheets++;
+			}
 		}
-		return list;
+		_count.Text = "Показано: " + visibleSheets + " из " + all.Count;
 	}
 
 	private void FillRow(DataGridViewRow gridRow, object data)
@@ -482,6 +508,7 @@ public class SheetGridControl : UserControl
 			gridRow.Cells[ColName].Value = "";
 			gridRow.Cells[ColStage].Value = null;
 			gridRow.ReadOnly = true;
+			gridRow.MinimumHeight = HeaderRowHeight;
 			gridRow.DefaultCellStyle.BackColor = Color.FromArgb(217, 217, 217);
 			gridRow.DefaultCellStyle.ForeColor = Color.Black;
 			gridRow.DefaultCellStyle.SelectionBackColor = Color.FromArgb(217, 217, 217);
@@ -491,43 +518,40 @@ public class SheetGridControl : UserControl
 			return;
 		}
 		SheetRow sheetRow = (SheetRow)data;
-		if (!_grid.IsCurrentRowDirty || _grid.CurrentCell == null || _grid.CurrentCell.RowIndex != gridRow.Index || _grid.CurrentCell.ColumnIndex != ColStage)
+		gridRow.Tag = sheetRow;
+		gridRow.ReadOnly = false;
+		string text = sheetRow.Number;
+		if (sheetRow.UpdatedInCentral)
 		{
-			gridRow.Tag = sheetRow;
-			gridRow.ReadOnly = false;
-			string text = sheetRow.Number;
-			if (sheetRow.UpdatedInCentral)
-			{
-				text += " *";
-			}
-			if (!string.IsNullOrEmpty(sheetRow.LockedBy))
-			{
-				text = text + "  " + ShortOwner(sheetRow.LockedBy);
-			}
-			gridRow.Cells[ColNumber].Value = text;
-			gridRow.Cells[ColName].Value = sheetRow.Name;
-			if (!string.IsNullOrEmpty(sheetRow.LockedBy))
-			{
-				gridRow.Cells[ColNumber].ToolTipText = "Лист открыт другим пользователем: " + sheetRow.LockedBy + Environment.NewLine + "Стадию изменить нельзя, пока он его не закроет." + Environment.NewLine + "Двойной клик — перейти к листу.";
-			}
-			else if (sheetRow.UpdatedInCentral)
-			{
-				gridRow.Cells[ColNumber].ToolTipText = "В центральной модели есть обновления — нажмите «Обновить»." + Environment.NewLine + "Двойной клик — перейти к листу.";
-			}
-			else
-			{
-				gridRow.Cells[ColNumber].ToolTipText = "Двойной клик — перейти к листу.";
-			}
-			DataGridViewCell stageCell = gridRow.Cells[ColStage];
-			if (!string.Equals(Convert.ToString(stageCell.Value), sheetRow.Stage, StringComparison.Ordinal))
-			{
-				stageCell.Value = sheetRow.Stage;
-			}
-			Color backColor = StageSettings.Instance.ColorOf(sheetRow.Stage);
-			gridRow.DefaultCellStyle.BackColor = backColor;
-			gridRow.DefaultCellStyle.ForeColor = Color.Black;
-			gridRow.DefaultCellStyle.Font = _grid.Font;
+			text += " *";
 		}
+		if (!string.IsNullOrEmpty(sheetRow.LockedBy))
+		{
+			text = text + "  " + ShortOwner(sheetRow.LockedBy);
+		}
+		gridRow.Cells[ColNumber].Value = text;
+		gridRow.Cells[ColName].Value = sheetRow.Name;
+		if (!string.IsNullOrEmpty(sheetRow.LockedBy))
+		{
+			gridRow.Cells[ColNumber].ToolTipText = "Лист открыт другим пользователем: " + sheetRow.LockedBy + Environment.NewLine + "Стадию изменить нельзя, пока он его не закроет." + Environment.NewLine + "Двойной клик — перейти к листу.";
+		}
+		else if (sheetRow.UpdatedInCentral)
+		{
+			gridRow.Cells[ColNumber].ToolTipText = "В центральной модели есть обновления — нажмите «Обновить»." + Environment.NewLine + "Двойной клик — перейти к листу.";
+		}
+		else
+		{
+			gridRow.Cells[ColNumber].ToolTipText = "Двойной клик — перейти к листу.";
+		}
+		DataGridViewCell stageCell = gridRow.Cells[ColStage];
+		if (!string.Equals(Convert.ToString(stageCell.Value), sheetRow.Stage, StringComparison.Ordinal))
+		{
+			stageCell.Value = sheetRow.Stage;
+		}
+		Color backColor = StageSettings.Instance.ColorOf(sheetRow.Stage);
+		gridRow.DefaultCellStyle.BackColor = backColor;
+		gridRow.DefaultCellStyle.ForeColor = Color.Black;
+		gridRow.DefaultCellStyle.Font = _grid.Font;
 	}
 
 	private void OnCellPainting(object sender, DataGridViewCellPaintingEventArgs e)
@@ -568,12 +592,19 @@ public class SheetGridControl : UserControl
 			}
 			e.Handled = true;
 		}
-		else
+		else if (dataGridViewRow.Tag is GroupHeader)
 		{
-			if (dataGridViewRow.Tag is GroupHeader)
+			// Ячейка «Стадия» у заголовка группы: рисуем фон явно, иначе остаются артефакты
+			Color headerBack = dataGridViewRow.DefaultCellStyle.BackColor;
+			using (SolidBrush brush = new SolidBrush(headerBack))
 			{
-				e.Handled = true;
+				e.Graphics.FillRectangle(brush, e.CellBounds);
 			}
+			using (Pen pen = new Pen(Color.Black, 1f))
+			{
+				e.Graphics.DrawRectangle(pen, e.CellBounds.X, e.CellBounds.Y, e.CellBounds.Width - 1, e.CellBounds.Height - 1);
+			}
+			e.Handled = true;
 		}
 	}
 
@@ -678,58 +709,6 @@ public class SheetGridControl : UserControl
 			Log.Write("Переход к листу " + sheetRow.Number + " (" + sheetRow.Id + ")");
 			Bridge.RequestOpenSheet(sheetRow.Id);
 		}
-	}
-
-	/// <summary>Применяет текстовый поиск и фильтр по стадии; скрывает пустые группы.</summary>
-	private void ApplyFilter()
-	{
-		string query = (_search.TextBox.Text ?? "").Trim();
-		string stageFilter = CurrentStageFilter();
-		int lastHeaderIndex = -1;
-		bool groupHasVisible = false;
-		foreach (DataGridViewRow row in _grid.Rows)
-		{
-			bool visible;
-			if (row.Tag is GroupHeader)
-			{
-				// Заголовок группы виден, если в ней есть видимые строки (решаем после прохода)
-				if (lastHeaderIndex >= 0)
-				{
-					_grid.Rows[lastHeaderIndex].Visible = groupHasVisible;
-				}
-				lastHeaderIndex = row.Index;
-				groupHasVisible = false;
-				visible = false;
-			}
-			else if (row.Tag is SheetRow sheetRow)
-			{
-				bool matchesQuery = query.Length == 0 || Contains(sheetRow.Number, query) || Contains(sheetRow.Name, query) || Contains(sheetRow.Stage, query);
-				bool matchesStage = stageFilter == null || string.Equals(sheetRow.Stage, stageFilter, StringComparison.Ordinal);
-				visible = matchesQuery && matchesStage;
-				groupHasVisible |= visible;
-			}
-			else
-			{
-				visible = false;
-			}
-			if (!(row.Tag is GroupHeader))
-			{
-				row.Visible = visible;
-			}
-		}
-		if (lastHeaderIndex >= 0)
-		{
-			_grid.Rows[lastHeaderIndex].Visible = groupHasVisible;
-		}
-		int visibleCount = 0;
-		foreach (DataGridViewRow row2 in _grid.Rows)
-		{
-			if (row2.Tag is SheetRow && row2.Visible)
-			{
-				visibleCount++;
-			}
-		}
-		_count.Text = "Показано: " + visibleCount + " из " + Bridge.Rows.Count;
 	}
 
 	private static string PluralSheets(int count)
