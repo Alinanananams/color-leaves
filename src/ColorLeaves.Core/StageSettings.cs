@@ -14,6 +14,10 @@ public class StageSettings
 
 	public List<StageDef> Stages { get; private set; }
 
+	public bool GroupByStage { get; set; }
+
+	public string FilterStage { get; set; }
+
 	public static StageSettings Instance
 	{
 		get
@@ -99,6 +103,12 @@ public class StageSettings
 			}
 			XmlDocument xmlDocument = new XmlDocument();
 			xmlDocument.Load(filePath);
+			XmlElement documentElement = xmlDocument.DocumentElement;
+			if (documentElement != null)
+			{
+				GroupByStage = documentElement.GetAttribute("groupByStage") == "1";
+				FilterStage = documentElement.GetAttribute("filterStage");
+			}
 			XmlNodeList xmlNodeList = xmlDocument.SelectNodes("/stages/stage");
 			if (xmlNodeList == null || xmlNodeList.Count == 0)
 			{
@@ -137,6 +147,8 @@ public class StageSettings
 			}
 			XmlDocument xmlDocument = new XmlDocument();
 			XmlElement xmlElement = xmlDocument.CreateElement("stages");
+			xmlElement.SetAttribute("groupByStage", GroupByStage ? "1" : "0");
+			xmlElement.SetAttribute("filterStage", FilterStage ?? "");
 			xmlDocument.AppendChild(xmlElement);
 			foreach (StageDef stage in Stages)
 			{

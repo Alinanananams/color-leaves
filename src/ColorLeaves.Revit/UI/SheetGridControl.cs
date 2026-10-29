@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Text;
@@ -20,6 +19,12 @@ public class SheetGridControl : UserControl
 
 	private const int ColStage = 2;
 
+	/// <summary>Маркер строки-разделителя группы (группировка по стадиям).</summary>
+	private class GroupHeader
+	{
+		public string Title;
+	}
+
 	private DataGridView _grid;
 
 	private ToolStripTextBox _search;
@@ -36,11 +41,17 @@ public class SheetGridControl : UserControl
 
 	private ToolStripButton _createParamButton;
 
+	private ToolStripButton _groupButton;
+
+	private ToolStripComboBox _stageFilter;
+
 	private ToolStripLabel _modeLabel;
 
 	private bool _suppress;
 
 	private bool _lastEditable;
+
+	private readonly Font _headerFont = new Font("Segoe UI", 9f, FontStyle.Bold);
 
 	public SheetGridControl()
 	{
@@ -55,6 +66,10 @@ public class SheetGridControl : UserControl
 			Bridge.DataChanged -= OnDataChanged;
 		}
 		base.Dispose(disposing);
+		if (disposing && _headerFont != null)
+		{
+			_headerFont.Dispose();
+		}
 	}
 
 	private void BuildUi()
@@ -66,27 +81,52 @@ public class SheetGridControl : UserControl
 		toolStrip.RenderMode = ToolStripRenderMode.System;
 		_search = new ToolStripTextBox();
 		_search.AutoSize = false;
-		_search.Width = 180;
+		_search.Width = 150;
 		_search.TextBox.TextChanged += delegate
 		{
-			ApplyFilter(_search.TextBox.Text);
+			ApplyFilter();
 		};
-		ToolStripButton toolStripButton = new ToolStripButton("Очистить");
-		toolStripButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
-		toolStripButton.Click += delegate
+		ToolStripButton clearButton = new ToolStripButton("Очистить");
+		clearButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
+		clearButton.Click += delegate
 		{
 			_search.TextBox.Text = "";
 		};
-		ToolStripButton toolStripButton2 = new ToolStripButton("Обновить");
-		toolStripButton2.DisplayStyle = ToolStripItemDisplayStyle.Text;
-		toolStripButton2.Click += delegate
+		_stageFilter = new ToolStripComboBox();
+		_stageFilter.DropDownStyle = ComboBoxStyle.DropDownList;
+		_stageFilter.Width = 130;
+		_stageFilter.Items.Add("Все стадии");
+		_stageFilter.SelectedIndex = 0;
+		_stageFilter.SelectedIndexChanged += delegate
+		{
+			if (!_suppress)
+			{
+				SaveUiState();
+				ApplyFilter();
+			}
+		};
+		_groupButton = new ToolStripButton("Группировать");
+		_groupButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
+		_groupButton.CheckOnClick = true;
+		_groupButton.ToolTipText = "Группировать листы по стадиям";
+		_groupButton.CheckedChanged += delegate
+		{
+			if (!_suppress)
+			{
+				SaveUiState();
+				RefreshNow();
+			}
+		};
+		ToolStripButton refreshButton = new ToolStripButton("Обновить");
+		refreshButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
+		refreshButton.Click += delegate
 		{
 			Bridge.RequestRefresh();
 			RefreshNow();
 		};
-		ToolStripButton toolStripButton3 = new ToolStripButton("Цвета стадий...");
-		toolStripButton3.DisplayStyle = ToolStripItemDisplayStyle.Text;
-		toolStripButton3.Click += OnColorsClick;
+		ToolStripButton colorsButton = new ToolStripButton("Цвета стадий...");
+		colorsButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
+		colorsButton.Click += OnColorsClick;
 		_diagButton = new ToolStripButton("Диагностика");
 		_diagButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
 		_diagButton.Click += OnDiagClick;
@@ -119,10 +159,14 @@ public class SheetGridControl : UserControl
 		_count.Font = new Font(_count.Font, FontStyle.Bold);
 		toolStrip.Items.Add(new ToolStripLabel("Поиск: "));
 		toolStrip.Items.Add(_search);
-		toolStrip.Items.Add(toolStripButton);
+		toolStrip.Items.Add(clearButton);
 		toolStrip.Items.Add(new ToolStripSeparator());
-		toolStrip.Items.Add(toolStripButton2);
-		toolStrip.Items.Add(toolStripButton3);
+		toolStrip.Items.Add(new ToolStripLabel("Стадия: "));
+		toolStrip.Items.Add(_stageFilter);
+		toolStrip.Items.Add(_groupButton);
+		toolStrip.Items.Add(new ToolStripSeparator());
+		toolStrip.Items.Add(refreshButton);
+		toolStrip.Items.Add(colorsButton);
 		toolStrip.Items.Add(_autoButton);
 		toolStrip.Items.Add(_unsetButton);
 		toolStrip.Items.Add(_createParamButton);
@@ -150,24 +194,26 @@ public class SheetGridControl : UserControl
 		_grid.ReadOnly = false;
 		_grid.CellValueChanged += OnCellValueChanged;
 		_grid.CellPainting += OnCellPainting;
-		DataGridViewTextBoxColumn dataGridViewTextBoxColumn = new DataGridViewTextBoxColumn();
-		dataGridViewTextBoxColumn.HeaderText = "№ листа";
-		dataGridViewTextBoxColumn.Name = "Number";
-		dataGridViewTextBoxColumn.Width = 150;
-		dataGridViewTextBoxColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
-		DataGridViewTextBoxColumn dataGridViewTextBoxColumn2 = new DataGridViewTextBoxColumn();
-		dataGridViewTextBoxColumn2.HeaderText = "Наименование";
-		dataGridViewTextBoxColumn2.Name = "Name";
-		dataGridViewTextBoxColumn2.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
-		dataGridViewTextBoxColumn2.MinimumWidth = 140;
-		dataGridViewTextBoxColumn2.SortMode = DataGridViewColumnSortMode.NotSortable;
-		DataGridViewComboBoxColumn dataGridViewComboBoxColumn = new DataGridViewComboBoxColumn();
-		dataGridViewComboBoxColumn.HeaderText = "Стадия";
-		dataGridViewComboBoxColumn.Name = "Stage";
-		dataGridViewComboBoxColumn.Width = 130;
-		dataGridViewComboBoxColumn.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton;
-		dataGridViewComboBoxColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
-		_grid.Columns.AddRange(dataGridViewTextBoxColumn, dataGridViewTextBoxColumn2, dataGridViewComboBoxColumn);
+		_grid.CellDoubleClick += OnCellDoubleClick;
+		_grid.KeyDown += OnGridKeyDown;
+		DataGridViewTextBoxColumn numberColumn = new DataGridViewTextBoxColumn();
+		numberColumn.HeaderText = "№ листа  (двойной клик — открыть)";
+		numberColumn.Name = "Number";
+		numberColumn.Width = 150;
+		numberColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
+		DataGridViewTextBoxColumn nameColumn = new DataGridViewTextBoxColumn();
+		nameColumn.HeaderText = "Наименование";
+		nameColumn.Name = "Name";
+		nameColumn.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+		nameColumn.MinimumWidth = 140;
+		nameColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
+		DataGridViewComboBoxColumn stageColumn = new DataGridViewComboBoxColumn();
+		stageColumn.HeaderText = "Стадия";
+		stageColumn.Name = "Stage";
+		stageColumn.Width = 130;
+		stageColumn.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton;
+		stageColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
+		_grid.Columns.AddRange(numberColumn, nameColumn, stageColumn);
 		base.Controls.Add(_grid);
 		base.Controls.Add(toolStrip);
 	}
@@ -212,11 +258,13 @@ public class SheetGridControl : UserControl
 		_suppress = true;
 		try
 		{
-			DataGridViewComboBoxColumn dataGridViewComboBoxColumn = _grid.Columns[2] as DataGridViewComboBoxColumn;
+			SyncStageFilterItems();
+			_groupButton.Checked = StageSettings.Instance.GroupByStage;
+			DataGridViewComboBoxColumn stageColumn = _grid.Columns[2] as DataGridViewComboBoxColumn;
 			List<string> names = StageSettings.Instance.Names;
-			if (dataGridViewComboBoxColumn != null && !SameItems(dataGridViewComboBoxColumn, names))
+			if (stageColumn != null && !SameItems(stageColumn, names))
 			{
-				dataGridViewComboBoxColumn.DataSource = names;
+				stageColumn.DataSource = names;
 			}
 			foreach (DataGridViewColumn column in _grid.Columns)
 			{
@@ -224,16 +272,15 @@ public class SheetGridControl : UserControl
 			}
 			_grid.Columns[2].ReadOnly = !Bridge.CanEditStage;
 			_autoButton.Enabled = Bridge.CanEditStage;
-			bool flag = !_grid.Columns[2].ReadOnly;
-			if (flag != _lastEditable)
+			bool editable = !_grid.Columns[2].ReadOnly;
+			if (editable != _lastEditable)
 			{
-				_lastEditable = flag;
-				Log.Write(string.Concat("Колонка «Стадия» редактируема: ", flag, " (CanEditStage=", Bridge.CanEditStage, ", источник значений: ", dataGridViewComboBoxColumn.DataSource, ")"));
+				_lastEditable = editable;
+				Log.Write(string.Concat("Колонка «Стадия» редактируема: ", editable, " (CanEditStage=", Bridge.CanEditStage, ", источник значений: ", stageColumn.DataSource, ")"));
 			}
 			List<SheetRow> rows = Bridge.Rows;
 			SyncRows(rows);
-			ApplyFilter(_search.TextBox.Text);
-			_count.Text = "Листов: " + rows.Count;
+			ApplyFilter();
 			_status.Text = Bridge.Message;
 			_status.ForeColor = (Bridge.CanEditStage ? Color.FromArgb(150, 90, 0) : Color.FromArgb(190, 30, 30));
 			_diagButton.Enabled = Bridge.HasDocument;
@@ -248,6 +295,71 @@ public class SheetGridControl : UserControl
 		finally
 		{
 			_suppress = false;
+		}
+	}
+
+	private void SyncStageFilterItems()
+	{
+		StageSettings stageSettings = StageSettings.Instance;
+		List<string> items = new List<string>
+		{
+			"Все стадии"
+		};
+		items.AddRange(stageSettings.Names);
+		bool same = _stageFilter.Items.Count == items.Count;
+		if (same)
+		{
+			for (int i = 0; i < items.Count; i++)
+			{
+				if (!string.Equals(_stageFilter.Items[i] as string, items[i], StringComparison.Ordinal))
+				{
+					same = false;
+					break;
+				}
+			}
+		}
+		if (!same)
+		{
+			_stageFilter.Items.Clear();
+			_stageFilter.Items.AddRange(items.ToArray());
+		}
+		string saved = stageSettings.FilterStage;
+		int target = 0;
+		if (!string.IsNullOrEmpty(saved))
+		{
+			int found = items.IndexOf(saved);
+			if (found >= 0)
+			{
+				target = found;
+			}
+		}
+		if (_stageFilter.SelectedIndex != target)
+		{
+			_stageFilter.SelectedIndex = target;
+		}
+	}
+
+	private string CurrentStageFilter()
+	{
+		if (_stageFilter.SelectedIndex > 0)
+		{
+			return _stageFilter.Items[_stageFilter.SelectedIndex] as string;
+		}
+		return null;
+	}
+
+	private void SaveUiState()
+	{
+		try
+		{
+			StageSettings stageSettings = StageSettings.Instance;
+			stageSettings.GroupByStage = _groupButton.Checked;
+			stageSettings.FilterStage = CurrentStageFilter();
+			stageSettings.Save();
+		}
+		catch (Exception ex)
+		{
+			Log.Write("Сохранение состояния UI: " + ex.Message);
 		}
 	}
 
@@ -273,72 +385,148 @@ public class SheetGridControl : UserControl
 
 	private void SyncRows(List<SheetRow> data)
 	{
-		bool flag = data.Count == _grid.Rows.Count;
-		if (flag)
+		List<object> display = BuildDisplayList(data);
+		bool same = display.Count == _grid.Rows.Count;
+		if (same)
 		{
-			for (int i = 0; i < data.Count; i++)
+			for (int i = 0; i < display.Count; i++)
 			{
-				if (!(_grid.Rows[i].Tag is SheetRow sheetRow) || sheetRow.Id != data[i].Id)
+				if (!SameRowItem(_grid.Rows[i].Tag, display[i]))
 				{
-					flag = false;
+					same = false;
 					break;
 				}
 			}
 		}
-		if (flag)
-		{
-			for (int j = 0; j < data.Count; j++)
-			{
-				FillRow(_grid.Rows[j], data[j]);
-			}
-			return;
-		}
 		_grid.SuspendLayout();
-		_grid.Rows.Clear();
-		foreach (SheetRow datum in data)
+		try
 		{
-			int index = _grid.Rows.Add();
-			FillRow(_grid.Rows[index], datum);
-		}
-		_grid.ResumeLayout();
-	}
-
-	private void FillRow(DataGridViewRow gridRow, SheetRow data)
-	{
-		if (!_grid.IsCurrentRowDirty || _grid.CurrentCell == null || _grid.CurrentCell.RowIndex != gridRow.Index || _grid.CurrentCell.ColumnIndex != 2)
-		{
-			gridRow.Tag = data;
-			string text = data.Number;
-			if (data.UpdatedInCentral)
+			if (same)
 			{
-				text += " *";
-			}
-			if (!string.IsNullOrEmpty(data.LockedBy))
-			{
-				text = text + "  " + ShortOwner(data.LockedBy);
-			}
-			gridRow.Cells[0].Value = text;
-			gridRow.Cells[1].Value = data.Name;
-			if (!string.IsNullOrEmpty(data.LockedBy))
-			{
-				gridRow.Cells[0].ToolTipText = "Лист открыт другим пользователем: " + data.LockedBy + Environment.NewLine + "Стадию изменить нельзя, пока он его не закроет.";
-			}
-			else if (data.UpdatedInCentral)
-			{
-				gridRow.Cells[0].ToolTipText = "В центральной модели есть обновления — нажмите «Обновить».";
+				for (int j = 0; j < display.Count; j++)
+				{
+					FillRow(_grid.Rows[j], display[j]);
+				}
 			}
 			else
 			{
-				gridRow.Cells[0].ToolTipText = "";
+				_grid.Rows.Clear();
+				foreach (object item in display)
+				{
+					int index = _grid.Rows.Add();
+					FillRow(_grid.Rows[index], item);
+				}
 			}
-			DataGridViewCell dataGridViewCell = gridRow.Cells[2];
-			if (!string.Equals(Convert.ToString(dataGridViewCell.Value), data.Stage, StringComparison.Ordinal))
+		}
+		finally
+		{
+			_grid.ResumeLayout();
+		}
+	}
+
+	private static bool SameRowItem(object tag, object item)
+	{
+		if (tag is SheetRow sheetRow && item is SheetRow sheetRow2)
+		{
+			return sheetRow.Id == sheetRow2.Id;
+		}
+		if (tag is GroupHeader groupHeader && item is GroupHeader groupHeader2)
+		{
+			return string.Equals(groupHeader.Title, groupHeader2.Title, StringComparison.Ordinal);
+		}
+		return false;
+	}
+
+	private List<object> BuildDisplayList(List<SheetRow> data)
+	{
+		List<object> list = new List<object>();
+		if (!_groupButton.Checked)
+		{
+			list.AddRange(data);
+			return list;
+		}
+		List<SheetRow> rest = new List<SheetRow>(data);
+		foreach (string name in StageSettings.Instance.Names)
+		{
+			List<SheetRow> group = rest.FindAll((SheetRow r) => string.Equals(r.Stage, name, StringComparison.Ordinal));
+			if (group.Count > 0)
 			{
-				dataGridViewCell.Value = data.Stage;
+				list.Add(new GroupHeader
+				{
+					Title = name + " — " + group.Count + " " + PluralSheets(group.Count)
+				});
+				list.AddRange(group);
+				foreach (SheetRow item in group)
+				{
+					rest.Remove(item);
+				}
 			}
-			Color backColor = StageSettings.Instance.ColorOf(data.Stage);
+		}
+		if (rest.Count > 0)
+		{
+			list.Add(new GroupHeader
+			{
+				Title = "Прочие — " + rest.Count + " " + PluralSheets(rest.Count)
+			});
+			list.AddRange(rest);
+		}
+		return list;
+	}
+
+	private void FillRow(DataGridViewRow gridRow, object data)
+	{
+		if (data is GroupHeader groupHeader)
+		{
+			gridRow.Tag = groupHeader;
+			gridRow.Cells[ColNumber].Value = groupHeader.Title;
+			gridRow.Cells[ColName].Value = "";
+			gridRow.Cells[ColStage].Value = null;
+			gridRow.ReadOnly = true;
+			gridRow.DefaultCellStyle.BackColor = Color.FromArgb(217, 217, 217);
+			gridRow.DefaultCellStyle.ForeColor = Color.Black;
+			gridRow.DefaultCellStyle.SelectionBackColor = Color.FromArgb(217, 217, 217);
+			gridRow.DefaultCellStyle.SelectionForeColor = Color.Black;
+			gridRow.DefaultCellStyle.Font = _headerFont;
+			gridRow.Cells[ColNumber].ToolTipText = "";
+			return;
+		}
+		SheetRow sheetRow = (SheetRow)data;
+		if (!_grid.IsCurrentRowDirty || _grid.CurrentCell == null || _grid.CurrentCell.RowIndex != gridRow.Index || _grid.CurrentCell.ColumnIndex != ColStage)
+		{
+			gridRow.Tag = sheetRow;
+			gridRow.ReadOnly = false;
+			string text = sheetRow.Number;
+			if (sheetRow.UpdatedInCentral)
+			{
+				text += " *";
+			}
+			if (!string.IsNullOrEmpty(sheetRow.LockedBy))
+			{
+				text = text + "  " + ShortOwner(sheetRow.LockedBy);
+			}
+			gridRow.Cells[ColNumber].Value = text;
+			gridRow.Cells[ColName].Value = sheetRow.Name;
+			if (!string.IsNullOrEmpty(sheetRow.LockedBy))
+			{
+				gridRow.Cells[ColNumber].ToolTipText = "Лист открыт другим пользователем: " + sheetRow.LockedBy + Environment.NewLine + "Стадию изменить нельзя, пока он его не закроет." + Environment.NewLine + "Двойной клик — перейти к листу.";
+			}
+			else if (sheetRow.UpdatedInCentral)
+			{
+				gridRow.Cells[ColNumber].ToolTipText = "В центральной модели есть обновления — нажмите «Обновить»." + Environment.NewLine + "Двойной клик — перейти к листу.";
+			}
+			else
+			{
+				gridRow.Cells[ColNumber].ToolTipText = "Двойной клик — перейти к листу.";
+			}
+			DataGridViewCell stageCell = gridRow.Cells[ColStage];
+			if (!string.Equals(Convert.ToString(stageCell.Value), sheetRow.Stage, StringComparison.Ordinal))
+			{
+				stageCell.Value = sheetRow.Stage;
+			}
+			Color backColor = StageSettings.Instance.ColorOf(sheetRow.Stage);
 			gridRow.DefaultCellStyle.BackColor = backColor;
 			gridRow.DefaultCellStyle.ForeColor = Color.Black;
+			gridRow.DefaultCellStyle.Font = _grid.Font;
 		}
 	}
 
@@ -347,38 +535,43 @@ public class SheetGridControl : UserControl
 		if (e.RowIndex == -1)
 		{
 			PaintHeaderCell(e);
+			return;
+		}
+		if (e.ColumnIndex != ColStage || e.RowIndex < 0 || e.RowIndex >= _grid.Rows.Count)
+		{
+			return;
+		}
+		DataGridViewRow dataGridViewRow = _grid.Rows[e.RowIndex];
+		if (dataGridViewRow.Tag is SheetRow sheetRow)
+		{
+			Color color = StageSettings.Instance.ColorOf(sheetRow.Stage);
+			Color foreColor = Color.Black;
+			if ((e.State & DataGridViewElementStates.Selected) != DataGridViewElementStates.None)
+			{
+				color = _grid.DefaultCellStyle.SelectionBackColor;
+				foreColor = _grid.DefaultCellStyle.SelectionForeColor;
+			}
+			using (SolidBrush brush = new SolidBrush(color))
+			{
+				e.Graphics.FillRectangle(brush, e.CellBounds);
+			}
+			string value = Convert.ToString(dataGridViewRow.Cells[ColStage].Value);
+			if (string.IsNullOrEmpty(value))
+			{
+				value = sheetRow.Stage;
+			}
+			Rectangle bounds = new Rectangle(e.CellBounds.X + 4, e.CellBounds.Y, e.CellBounds.Width - 8, e.CellBounds.Height);
+			TextRenderer.DrawText(e.Graphics, value, e.CellStyle.Font, bounds, foreColor, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter);
+			using (Pen pen = new Pen(Color.Black, 1f))
+			{
+				e.Graphics.DrawRectangle(pen, e.CellBounds.X, e.CellBounds.Y, e.CellBounds.Width - 1, e.CellBounds.Height - 1);
+			}
+			e.Handled = true;
 		}
 		else
 		{
-			if (e.ColumnIndex != 2 || e.RowIndex < 0 || e.RowIndex >= _grid.Rows.Count)
+			if (dataGridViewRow.Tag is GroupHeader)
 			{
-				return;
-			}
-			DataGridViewRow dataGridViewRow = _grid.Rows[e.RowIndex];
-			if (dataGridViewRow.Tag is SheetRow sheetRow)
-			{
-				Color color = StageSettings.Instance.ColorOf(sheetRow.Stage);
-				Color foreColor = Color.Black;
-				if ((e.State & DataGridViewElementStates.Selected) != DataGridViewElementStates.None)
-				{
-					color = _grid.DefaultCellStyle.SelectionBackColor;
-					foreColor = _grid.DefaultCellStyle.SelectionForeColor;
-				}
-				using (SolidBrush brush = new SolidBrush(color))
-				{
-					e.Graphics.FillRectangle(brush, e.CellBounds);
-				}
-				string value = Convert.ToString(dataGridViewRow.Cells[2].Value);
-				if (string.IsNullOrEmpty(value))
-				{
-					value = sheetRow.Stage;
-				}
-				Rectangle bounds = new Rectangle(e.CellBounds.X + 4, e.CellBounds.Y, e.CellBounds.Width - 8, e.CellBounds.Height);
-				TextRenderer.DrawText(e.Graphics, value, e.CellStyle.Font, bounds, foreColor, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter);
-				using (Pen pen = new Pen(Color.Black, 1f))
-				{
-					e.Graphics.DrawRectangle(pen, e.CellBounds.X, e.CellBounds.Y, e.CellBounds.Width - 1, e.CellBounds.Height - 1);
-				}
 				e.Handled = true;
 			}
 		}
@@ -421,66 +614,141 @@ public class SheetGridControl : UserControl
 
 	private void OnCellValueChanged(object sender, DataGridViewCellEventArgs e)
 	{
-		//IL_00f5: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00fa: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00fb: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00fd: Invalid comparison between Unknown and I4
-		if (_suppress || e.RowIndex < 0 || e.ColumnIndex != 2)
+		if (_suppress || e.RowIndex < 0 || e.ColumnIndex != ColStage)
 		{
 			return;
 		}
 		DataGridViewRow dataGridViewRow = _grid.Rows[e.RowIndex];
 		if (!(dataGridViewRow.Tag is SheetRow sheetRow))
 		{
-			Log.Write("Выбор стадии: строка без данных (строка " + e.RowIndex + ")");
 			return;
 		}
-		string text = Convert.ToString(dataGridViewRow.Cells[2].Value);
+		string text = Convert.ToString(dataGridViewRow.Cells[ColStage].Value);
 		if (string.IsNullOrEmpty(text))
 		{
 			Log.Write("Выбор стадии: пустое значение");
+			return;
 		}
-		else
+		if (string.Equals(text, sheetRow.Stage, StringComparison.Ordinal))
 		{
-			if (string.Equals(text, sheetRow.Stage, StringComparison.Ordinal))
+			return;
+		}
+		Log.Write("Выбор стадии: лист " + sheetRow.Number + " (" + sheetRow.Id + ") -> " + text);
+		if (Bridge.IsWorkshared)
+		{
+			CheckoutStatus checkoutStatus = Bridge.GetCheckoutStatus(sheetRow.Id);
+			if ((int)checkoutStatus == 1)
 			{
+				string checkoutOwner = Bridge.GetCheckoutOwner(sheetRow.Id);
+				Log.Write("Лист " + sheetRow.Number + " открыт другим пользователем (" + checkoutOwner + ") — запись отменена");
+				Bridge.ShowSheetLocked(sheetRow.Number, sheetRow.Name, checkoutOwner);
+				FillRow(dataGridViewRow, sheetRow);
 				return;
 			}
-			Log.Write("Выбор стадии: лист " + sheetRow.Number + " (" + sheetRow.Id + ") -> " + text);
-			if (Bridge.IsWorkshared)
-			{
-				CheckoutStatus checkoutStatus = Bridge.GetCheckoutStatus(sheetRow.Id);
-				if ((int)checkoutStatus == 1)
-				{
-					string checkoutOwner = Bridge.GetCheckoutOwner(sheetRow.Id);
-					Log.Write("Лист " + sheetRow.Number + " открыт другим пользователем (" + checkoutOwner + ") — запись отменена");
-					Bridge.ShowSheetLocked(sheetRow.Number, sheetRow.Name, checkoutOwner);
-					FillRow(dataGridViewRow, sheetRow);
-					return;
-				}
-			}
-			sheetRow.Stage = text;
-			sheetRow.StageIsManual = true;
-			dataGridViewRow.DefaultCellStyle.BackColor = StageSettings.Instance.ColorOf(text);
-			Bridge.QueueStage(sheetRow.Id, text);
+		}
+		sheetRow.Stage = text;
+		sheetRow.StageIsManual = true;
+		dataGridViewRow.DefaultCellStyle.BackColor = StageSettings.Instance.ColorOf(text);
+		Bridge.QueueStage(sheetRow.Id, text);
+	}
+
+	/// <summary>Двойной клик по строке — открыть лист в Revit.</summary>
+	private void OnCellDoubleClick(object sender, DataGridViewCellEventArgs e)
+	{
+		if (e.RowIndex >= 0)
+		{
+			OpenCurrentRowSheet();
 		}
 	}
 
-	private void ApplyFilter(string text)
+	private void OnGridKeyDown(object sender, KeyEventArgs e)
 	{
-		string text2 = (text ?? "").Trim();
-		foreach (DataGridViewRow item in (IEnumerable)_grid.Rows)
+		if (e.KeyCode == Keys.Enter && !_grid.IsCurrentCellInEditMode)
 		{
-			if (item.DataBoundItem != null || item.Tag != null)
+			OpenCurrentRowSheet();
+			e.Handled = true;
+		}
+	}
+
+	private void OpenCurrentRowSheet()
+	{
+		DataGridViewRow currentRow = _grid.CurrentRow;
+		if (currentRow != null && currentRow.Tag is SheetRow sheetRow)
+		{
+			Log.Write("Переход к листу " + sheetRow.Number + " (" + sheetRow.Id + ")");
+			Bridge.RequestOpenSheet(sheetRow.Id);
+		}
+	}
+
+	/// <summary>Применяет текстовый поиск и фильтр по стадии; скрывает пустые группы.</summary>
+	private void ApplyFilter()
+	{
+		string query = (_search.TextBox.Text ?? "").Trim();
+		string stageFilter = CurrentStageFilter();
+		int lastHeaderIndex = -1;
+		bool groupHasVisible = false;
+		foreach (DataGridViewRow row in _grid.Rows)
+		{
+			bool visible;
+			if (row.Tag is GroupHeader)
 			{
-				if (!(item.Tag is SheetRow sheetRow))
+				// Заголовок группы виден, если в ней есть видимые строки (решаем после прохода)
+				if (lastHeaderIndex >= 0)
 				{
-					item.Visible = false;
-					continue;
+					_grid.Rows[lastHeaderIndex].Visible = groupHasVisible;
 				}
-				bool visible = text2.Length == 0 || Contains(sheetRow.Number, text2) || Contains(sheetRow.Name, text2) || Contains(sheetRow.Stage, text2);
-				item.Visible = visible;
+				lastHeaderIndex = row.Index;
+				groupHasVisible = false;
+				visible = false;
 			}
+			else if (row.Tag is SheetRow sheetRow)
+			{
+				bool matchesQuery = query.Length == 0 || Contains(sheetRow.Number, query) || Contains(sheetRow.Name, query) || Contains(sheetRow.Stage, query);
+				bool matchesStage = stageFilter == null || string.Equals(sheetRow.Stage, stageFilter, StringComparison.Ordinal);
+				visible = matchesQuery && matchesStage;
+				groupHasVisible |= visible;
+			}
+			else
+			{
+				visible = false;
+			}
+			if (!(row.Tag is GroupHeader))
+			{
+				row.Visible = visible;
+			}
+		}
+		if (lastHeaderIndex >= 0)
+		{
+			_grid.Rows[lastHeaderIndex].Visible = groupHasVisible;
+		}
+		int visibleCount = 0;
+		foreach (DataGridViewRow row2 in _grid.Rows)
+		{
+			if (row2.Tag is SheetRow && row2.Visible)
+			{
+				visibleCount++;
+			}
+		}
+		_count.Text = "Показано: " + visibleCount + " из " + Bridge.Rows.Count;
+	}
+
+	private static string PluralSheets(int count)
+	{
+		int mod100 = count % 100;
+		if (mod100 >= 11 && mod100 <= 14)
+		{
+			return "листов";
+		}
+		switch (count % 10)
+		{
+		case 1:
+			return "лист";
+		case 2:
+		case 3:
+		case 4:
+			return "листа";
+		default:
+			return "листов";
 		}
 	}
 
