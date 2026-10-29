@@ -17,7 +17,9 @@ public class SheetGridControl : UserControl
 
 	private const int ColName = 1;
 
-	private const int ColStage = 2;
+	private const int ColEditedBy = 2;
+
+	private const int ColStage = 3;
 
 	private const int HeaderRowHeight = 26;
 
@@ -216,7 +218,12 @@ public class SheetGridControl : UserControl
 		stageColumn.Width = 130;
 		stageColumn.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton;
 		stageColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
-		_grid.Columns.AddRange(numberColumn, nameColumn, stageColumn);
+		DataGridViewTextBoxColumn editedByColumn = new DataGridViewTextBoxColumn();
+		editedByColumn.HeaderText = "Редактирует";
+		editedByColumn.Name = "EditedBy";
+		editedByColumn.Width = 110;
+		editedByColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
+		_grid.Columns.AddRange(numberColumn, nameColumn, editedByColumn, stageColumn);
 		base.Controls.Add(_grid);
 		base.Controls.Add(toolStrip);
 	}
@@ -517,6 +524,7 @@ public class SheetGridControl : UserControl
 			gridRow.Tag = groupHeader;
 			gridRow.Cells[ColNumber].Value = groupHeader.Title;
 			gridRow.Cells[ColName].Value = "";
+			gridRow.Cells[ColEditedBy].Value = "";
 			gridRow.Cells[ColStage].Value = null;
 			gridRow.ReadOnly = true;
 			gridRow.MinimumHeight = HeaderRowHeight;
@@ -542,6 +550,7 @@ public class SheetGridControl : UserControl
 		}
 		gridRow.Cells[ColNumber].Value = text;
 		gridRow.Cells[ColName].Value = sheetRow.Name;
+		gridRow.Cells[ColEditedBy].Value = sheetRow.EditedBy;
 		if (!string.IsNullOrEmpty(sheetRow.LockedBy))
 		{
 			gridRow.Cells[ColNumber].ToolTipText = "Лист открыт другим пользователем: " + sheetRow.LockedBy + Environment.NewLine + "Стадию изменить нельзя, пока он его не закроет." + Environment.NewLine + "Двойной клик — перейти к листу.";

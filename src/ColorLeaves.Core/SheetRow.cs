@@ -22,6 +22,8 @@ public class SheetRow
 
 	public string LockedBy { get; set; }
 
+	public string EditedBy { get; set; }
+
 	public SheetRow()
 	{
 		Number = "";
@@ -30,5 +32,6 @@ public class SheetRow
 		CheckedBy = "";
 		ApprovedBy = "";
 		IssueDate = "";
+		EditedBy = "";
 	}
 }

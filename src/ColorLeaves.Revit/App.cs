@@ -37,6 +37,7 @@ public class App : IExternalApplication
 		}
 		application.ViewActivated += OnViewActivated;
 		application.Idling += OnIdling;
+		application.ControlledApplication.DocumentChanged += OnDocumentChanged;
 		CreateRibbon(application);
 		Log.Write("OnStartup: завершено");
 		return (Result)0;
@@ -46,8 +47,21 @@ public class App : IExternalApplication
 	{
 		application.ViewActivated -= OnViewActivated;
 		application.Idling -= OnIdling;
+		application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
 		Log.Write("OnShutdown");
 		return (Result)0;
+	}
+
+	private void OnDocumentChanged(object sender, Autodesk.Revit.DB.Events.DocumentChangedEventArgs e)
+	{
+		try
+		{
+			Bridge.OnDocumentChanged(e.GetDocument(), e.GetModifiedElementIds());
+		}
+		catch (Exception ex)
+		{
+			Log.Write("DocumentChanged: ошибка " + ex.Message);
+		}
 	}
 
 	private void OnViewActivated(object sender, ViewActivatedEventArgs e)

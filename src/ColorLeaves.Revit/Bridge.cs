@@ -11,7 +11,7 @@ namespace ColorLeaves.Revit;
 
 public static class Bridge
 {
-	private static readonly TimeSpan MinScanInterval = new TimeSpan(0, 0, 0, 5, 0);
+	private static readonly TimeSpan MinScanInterval = new TimeSpan(0, 0, 1, 0);
 
 	private static readonly TimeSpan CentralCheckInterval = new TimeSpan(0, 0, 0, 30);
 
@@ -107,6 +107,87 @@ public static class Bridge
 			_verifiedDocument = false;
 			_unsetFilled = false;
 			_paramCreateTried = false;
+		}
+	}
+
+	/// <summary>
+	/// Точечное обновление по событию DocumentChanged: перечитывает только изменённые листы
+	/// (например, когда коллега заполнил параметр «Редактирует» и изменения пришли с синхронизацией).
+	/// Полный скан модели не выполняется — таблица обновляется без лагов.
+	/// </summary>
+	public static void OnDocumentChanged(Document doc, ICollection<ElementId> modifiedIds)
+	{
+		try
+		{
+			if (doc == null || modifiedIds == null || modifiedIds.Count == 0)
+			{
+				return;
+			}
+			bool hasSheets = false;
+			foreach (ElementId id in modifiedIds)
+			{
+				if (doc.GetElement(id) is ViewSheet)
+				{
+					hasSheets = true;
+					break;
+				}
+			}
+			if (!hasSheets)
+			{
+				return;
+			}
+			if (!object.ReferenceEquals(_document, doc))
+			{
+				SetDocument(doc);
+			}
+			bool anyChanged = false;
+			bool needFullScan = false;
+			foreach (ElementId id2 in modifiedIds)
+			{
+				SheetRow sheetRow = SheetReader.ReadOne(doc, id2);
+				if (sheetRow == null)
+				{
+					continue;
+				}
+				SheetRow sheetRow2 = _rows.Find((SheetRow r) => r.Id == sheetRow.Id);
+				if (sheetRow2 == null)
+				{
+					needFullScan = true;
+					continue;
+				}
+				if (!string.Equals(sheetRow2.Number, sheetRow.Number, StringComparison.Ordinal) ||
+					!string.Equals(sheetRow2.Name, sheetRow.Name, StringComparison.Ordinal) ||
+					!string.Equals(sheetRow2.Stage, sheetRow.Stage, StringComparison.Ordinal) ||
+					!string.Equals(sheetRow2.EditedBy, sheetRow.EditedBy, StringComparison.Ordinal) ||
+					!string.Equals(sheetRow2.CheckedBy, sheetRow.CheckedBy, StringComparison.Ordinal) ||
+					!string.Equals(sheetRow2.ApprovedBy, sheetRow.ApprovedBy, StringComparison.Ordinal) ||
+					!string.Equals(sheetRow2.IssueDate, sheetRow.IssueDate, StringComparison.Ordinal) ||
+					sheetRow2.StageIsManual != sheetRow.StageIsManual)
+				{
+					sheetRow2.Number = sheetRow.Number;
+					sheetRow2.Name = sheetRow.Name;
+					sheetRow2.Stage = sheetRow.Stage;
+					sheetRow2.StageIsManual = sheetRow.StageIsManual;
+					sheetRow2.CheckedBy = sheetRow.CheckedBy;
+					sheetRow2.ApprovedBy = sheetRow.ApprovedBy;
+					sheetRow2.IssueDate = sheetRow.IssueDate;
+					sheetRow2.EditedBy = sheetRow.EditedBy;
+					anyChanged = true;
+					Log.Write("DocumentChanged: лист " + sheetRow2.Number + " обновлён по событию");
+				}
+			}
+			if (needFullScan)
+			{
+				_forceScan = true;
+			}
+			if (anyChanged)
+			{
+				Raise();
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Write("DocumentChanged: ошибка " + ex.Message);
 		}
 	}
 

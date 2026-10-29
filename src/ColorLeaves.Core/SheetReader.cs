@@ -59,6 +59,8 @@ public static class SheetReader
 
 	public const string StageParameterName = "Стадия готовности";
 
+	public const string EditedByParameterName = "Редактирует";
+
 	public static bool UseDefaultUnsetStage = true;
 
 	public static List<SheetRow> Read(Document doc)
@@ -78,41 +80,60 @@ public static class SheetReader
 			if (val2 != null && !val2.IsPlaceholder)
 			{
 				SheetRow sheetRow = new SheetRow();
-				sheetRow.Id = ((Element)val2).Id.IntegerValue;
-				sheetRow.Number = Text((Element)(object)val2, (BuiltInParameter)(-1007401));
-				sheetRow.Name = Text((Element)(object)val2, (BuiltInParameter)(-1007400));
-				if (sheetRow.Number.Length == 0)
-				{
-					sheetRow.Number = val2.SheetNumber ?? "";
-				}
-				if (sheetRow.Name.Length == 0)
-				{
-					sheetRow.Name = ((Element)val2).Name ?? "";
-				}
-				sheetRow.CheckedBy = Text((Element)(object)val2, (BuiltInParameter)(-1007405));
-				sheetRow.ApprovedBy = Text((Element)(object)val2, (BuiltInParameter)(-1007408));
-				sheetRow.IssueDate = Text((Element)(object)val2, (BuiltInParameter)(-1006322));
-				string text = ReadManualStage(val2);
-				if (!string.IsNullOrEmpty(text))
-				{
-					sheetRow.Stage = text;
-					sheetRow.StageIsManual = true;
-				}
-				else if (UseDefaultUnsetStage)
-				{
-					sheetRow.Stage = "Не задана";
-					sheetRow.StageIsManual = true;
-				}
-				else
-				{
-					sheetRow.Stage = DetectStage(sheetRow);
-					sheetRow.StageIsManual = false;
-				}
+				Fill(sheetRow, val2);
 				list.Add(sheetRow);
 			}
 		}
 		list.Sort((SheetRow a, SheetRow b) => NaturalComparer.Instance.Compare(a.Number, b.Number));
 		return list;
+	}
+
+	/// <summary>Читает данные одного листа (для точечного обновления по DocumentChanged).</summary>
+	public static SheetRow ReadOne(Document doc, ElementId id)
+	{
+		ViewSheet viewSheet = doc.GetElement(id) as ViewSheet;
+		if (viewSheet == null || viewSheet.IsPlaceholder)
+		{
+			return null;
+		}
+		SheetRow sheetRow = new SheetRow();
+		Fill(sheetRow, viewSheet);
+		return sheetRow;
+	}
+
+	private static void Fill(SheetRow sheetRow, ViewSheet val2)
+	{
+		sheetRow.Id = ((Element)val2).Id.IntegerValue;
+		sheetRow.Number = Text((Element)(object)val2, (BuiltInParameter)(-1007401));
+		sheetRow.Name = Text((Element)(object)val2, (BuiltInParameter)(-1007400));
+		if (sheetRow.Number.Length == 0)
+		{
+			sheetRow.Number = val2.SheetNumber ?? "";
+		}
+		if (sheetRow.Name.Length == 0)
+		{
+			sheetRow.Name = ((Element)val2).Name ?? "";
+		}
+		sheetRow.CheckedBy = Text((Element)(object)val2, (BuiltInParameter)(-1007405));
+		sheetRow.ApprovedBy = Text((Element)(object)val2, (BuiltInParameter)(-1007408));
+		sheetRow.IssueDate = Text((Element)(object)val2, (BuiltInParameter)(-1006322));
+		sheetRow.EditedBy = LookupText((Element)(object)val2, EditedByParameterName);
+		string text = ReadManualStage(val2);
+		if (!string.IsNullOrEmpty(text))
+		{
+			sheetRow.Stage = text;
+			sheetRow.StageIsManual = true;
+		}
+		else if (UseDefaultUnsetStage)
+		{
+			sheetRow.Stage = "Не задана";
+			sheetRow.StageIsManual = true;
+		}
+		else
+		{
+			sheetRow.Stage = DetectStage(sheetRow);
+			sheetRow.StageIsManual = false;
+		}
 	}
 
 	public static bool HasStageParameter(Document doc)
@@ -139,6 +160,28 @@ public static class SheetReader
 			return text.Trim();
 		}
 		return "";
+	}
+
+	/// <summary>Читает текстовый параметр по имени (пустая строка, если параметра нет).</summary>
+	public static string LookupText(Element element, string parameterName)
+	{
+		Parameter val = element.LookupParameter(parameterName);
+		if (val == null || val.IsReadOnly)
+		{
+			return "";
+		}
+		try
+		{
+			if ((int)val.StorageType != 3)
+			{
+				return "";
+			}
+			return val.AsString() ?? "";
+		}
+		catch
+		{
+			return "";
+		}
 	}
 
 	public static Parameter LookupStageParameter(Document doc)
