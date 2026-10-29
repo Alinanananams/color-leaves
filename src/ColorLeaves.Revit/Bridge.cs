@@ -35,10 +35,6 @@ public static class Bridge
 
 	private static bool _paramCreateTried;
 
-	private static int _pendingOpenSheetId;
-
-	private static int _openSheetAttempts;
-
 	private static string _message = "";
 
 	private static bool _hasStageParameter;
@@ -239,12 +235,6 @@ public static class Bridge
 			{
 				_fillUnsetRequested = false;
 				FillUnsetStagesOnce();
-			}
-			if (_pendingOpenSheetId != 0)
-			{
-				int sheetIdToOpen = _pendingOpenSheetId;
-				_pendingOpenSheetId = 0;
-				OpenSheet(sheetIdToOpen);
 			}
 			ApplyPending();
 			VerifyWriteOnce();
@@ -941,55 +931,6 @@ public static class Bridge
 		_pending.Add(pendingStage);
 		_forceScan = true;
 		Log.Write("В очередь добавлен лист " + sheetId + " = " + stage);
-	}
-
-	public static void RequestOpenSheet(int sheetId)
-	{
-		if (sheetId != 0)
-		{
-			_pendingOpenSheetId = sheetId;
-			_openSheetAttempts = 0;
-			_forceScan = true;
-			Log.Write("Запрошено открытие листа " + sheetId);
-		}
-	}
-
-	private static void OpenSheet(int sheetId)
-	{
-		try
-		{
-			if (_uiApp == null || _uiApp.ActiveUIDocument == null || _document == null)
-			{
-				SetMessage("Нет активного документа — откройте проект и повторите.");
-				Log.Write("Открытие листа: нет активного документа");
-				return;
-			}
-			ViewSheet viewSheet = _document.GetElement(new ElementId(sheetId)) as ViewSheet;
-			if (viewSheet == null)
-			{
-				SetMessage("Лист не найден — возможно, он был удалён.");
-				Log.Write("Открытие листа: лист " + sheetId + " не найден в модели");
-				return;
-			}
-			_uiApp.ActiveUIDocument.ActiveView = viewSheet;
-			Log.Write("Открыт лист " + viewSheet.SheetNumber + " (попытка " + (_openSheetAttempts + 1) + ")");
-			_openSheetAttempts = 0;
-		}
-		catch (Exception ex)
-		{
-			_openSheetAttempts++;
-			Log.Write("Открытие листа: попытка " + _openSheetAttempts + " не удалась: " + ex.Message);
-			if (_openSheetAttempts >= 3)
-			{
-				SetMessage("Не удалось открыть лист: " + ex.Message);
-				_openSheetAttempts = 0;
-			}
-			else
-			{
-				_pendingOpenSheetId = sheetId;
-				_forceScan = true;
-			}
-		}
 	}
 
 	public static void RequestAutoFill()

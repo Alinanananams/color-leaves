@@ -199,12 +199,10 @@ public class SheetGridControl : UserControl
 		_grid.CellValueChanged += OnCellValueChanged;
 		_grid.CellPainting += OnCellPainting;
 		_grid.DataError += OnGridDataError;
-		_grid.CellDoubleClick += OnCellDoubleClick;
-		_grid.KeyDown += OnGridKeyDown;
 		DataGridViewTextBoxColumn numberColumn = new DataGridViewTextBoxColumn();
-		numberColumn.HeaderText = "№ листа  (двойной клик — открыть)";
+		numberColumn.HeaderText = "№ листа";
 		numberColumn.Name = "Number";
-		numberColumn.Width = 190;
+		numberColumn.Width = 150;
 		numberColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
 		DataGridViewTextBoxColumn nameColumn = new DataGridViewTextBoxColumn();
 		nameColumn.HeaderText = "Наименование";
@@ -553,15 +551,15 @@ public class SheetGridControl : UserControl
 		gridRow.Cells[ColEditedBy].Value = sheetRow.EditedBy;
 		if (!string.IsNullOrEmpty(sheetRow.LockedBy))
 		{
-			gridRow.Cells[ColNumber].ToolTipText = "Лист открыт другим пользователем: " + sheetRow.LockedBy + Environment.NewLine + "Стадию изменить нельзя, пока он его не закроет." + Environment.NewLine + "Двойной клик — перейти к листу.";
+			gridRow.Cells[ColNumber].ToolTipText = "Лист открыт другим пользователем: " + sheetRow.LockedBy + Environment.NewLine + "Стадию изменить нельзя, пока он его не закроет.";
 		}
 		else if (sheetRow.UpdatedInCentral)
 		{
-			gridRow.Cells[ColNumber].ToolTipText = "В центральной модели есть обновления — нажмите «Обновить»." + Environment.NewLine + "Двойной клик — перейти к листу.";
+			gridRow.Cells[ColNumber].ToolTipText = "В центральной модели есть обновления — нажмите «Обновить».";
 		}
 		else
 		{
-			gridRow.Cells[ColNumber].ToolTipText = "Двойной клик — перейти к листу.";
+			gridRow.Cells[ColNumber].ToolTipText = "";
 		}
 		DataGridViewCell stageCell = gridRow.Cells[ColStage];
 		if (!string.Equals(Convert.ToString(stageCell.Value), sheetRow.Stage, StringComparison.Ordinal))
@@ -723,34 +721,6 @@ public class SheetGridControl : UserControl
 		sheetRow.StageIsManual = true;
 		dataGridViewRow.DefaultCellStyle.BackColor = StageSettings.Instance.ColorOf(text);
 		Bridge.QueueStage(sheetRow.Id, text);
-	}
-
-	/// <summary>Двойной клик по строке — открыть лист в Revit.</summary>
-	private void OnCellDoubleClick(object sender, DataGridViewCellEventArgs e)
-	{
-		if (e.RowIndex >= 0)
-		{
-			OpenCurrentRowSheet();
-		}
-	}
-
-	private void OnGridKeyDown(object sender, KeyEventArgs e)
-	{
-		if (e.KeyCode == Keys.Enter && !_grid.IsCurrentCellInEditMode)
-		{
-			OpenCurrentRowSheet();
-			e.Handled = true;
-		}
-	}
-
-	private void OpenCurrentRowSheet()
-	{
-		DataGridViewRow currentRow = _grid.CurrentRow;
-		if (currentRow != null && currentRow.Tag is SheetRow sheetRow)
-		{
-			Log.Write("Переход к листу " + sheetRow.Number + " (" + sheetRow.Id + ")");
-			Bridge.RequestOpenSheet(sheetRow.Id);
-		}
 	}
 
 	private static string PluralSheets(int count)
