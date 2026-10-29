@@ -18,6 +18,8 @@ public class StageSettings
 
 	public string FilterStage { get; set; }
 
+	public bool AutoEditedBy { get; set; } = true;
+
 	public static StageSettings Instance
 	{
 		get
@@ -108,6 +110,7 @@ public class StageSettings
 			{
 				GroupByStage = documentElement.GetAttribute("groupByStage") == "1";
 				FilterStage = documentElement.GetAttribute("filterStage");
+				AutoEditedBy = documentElement.GetAttribute("autoEditedBy") != "0";
 			}
 			XmlNodeList xmlNodeList = xmlDocument.SelectNodes("/stages/stage");
 			if (xmlNodeList == null || xmlNodeList.Count == 0)
@@ -149,6 +152,7 @@ public class StageSettings
 			XmlElement xmlElement = xmlDocument.CreateElement("stages");
 			xmlElement.SetAttribute("groupByStage", GroupByStage ? "1" : "0");
 			xmlElement.SetAttribute("filterStage", FilterStage ?? "");
+			xmlElement.SetAttribute("autoEditedBy", AutoEditedBy ? "1" : "0");
 			xmlDocument.AppendChild(xmlElement);
 			foreach (StageDef stage in Stages)
 			{

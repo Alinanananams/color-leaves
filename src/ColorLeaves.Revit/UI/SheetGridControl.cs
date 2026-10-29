@@ -47,6 +47,8 @@ public class SheetGridControl : UserControl
 
 	private ToolStripButton _groupButton;
 
+	private ToolStripButton _autoEditedByButton;
+
 	private ToolStripComboBox _stageFilter;
 
 	private ToolStripLabel _modeLabel;
@@ -121,6 +123,20 @@ public class SheetGridControl : UserControl
 				RefreshNow();
 			}
 		};
+		_autoEditedByButton = new ToolStripButton("Авто «Редактирует»");
+		_autoEditedByButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
+		_autoEditedByButton.CheckOnClick = true;
+		_autoEditedByButton.ToolTipText = "Автоматически вписывать имя пользователя в параметр «Редактирует», когда вы работаете с листом, и очищать при уходе";
+		_autoEditedByButton.CheckedChanged += delegate
+		{
+			if (!_suppress)
+			{
+				StageSettings stageSettings = StageSettings.Instance;
+				stageSettings.AutoEditedBy = _autoEditedByButton.Checked;
+				stageSettings.Save();
+				Log.Write("Авто «Редактирует»: " + (_autoEditedByButton.Checked ? "включено" : "выключено"));
+			}
+		};
 		ToolStripButton refreshButton = new ToolStripButton("Обновить");
 		refreshButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
 		refreshButton.Click += delegate
@@ -168,6 +184,7 @@ public class SheetGridControl : UserControl
 		toolStrip.Items.Add(new ToolStripLabel("Стадия: "));
 		toolStrip.Items.Add(_stageFilter);
 		toolStrip.Items.Add(_groupButton);
+		toolStrip.Items.Add(_autoEditedByButton);
 		toolStrip.Items.Add(new ToolStripSeparator());
 		toolStrip.Items.Add(refreshButton);
 		toolStrip.Items.Add(colorsButton);
@@ -268,6 +285,7 @@ public class SheetGridControl : UserControl
 		{
 			SyncStageFilterItems();
 			_groupButton.Checked = StageSettings.Instance.GroupByStage;
+			_autoEditedByButton.Checked = StageSettings.Instance.AutoEditedBy;
 			DataGridViewComboBoxColumn stageColumn = _grid.Columns[ColStage] as DataGridViewComboBoxColumn;
 			List<string> names = StageSettings.Instance.Names;
 			// К настроенным стадиям добавляем неизвестные значения из проекта —
@@ -371,6 +389,7 @@ public class SheetGridControl : UserControl
 			StageSettings stageSettings = StageSettings.Instance;
 			stageSettings.GroupByStage = _groupButton.Checked;
 			stageSettings.FilterStage = CurrentStageFilter();
+			stageSettings.AutoEditedBy = _autoEditedByButton.Checked;
 			stageSettings.Save();
 		}
 		catch (Exception ex)

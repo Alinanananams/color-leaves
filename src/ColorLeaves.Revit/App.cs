@@ -75,6 +75,7 @@ public class App : IExternalApplication
 			Document doc = ((RevitAPIPostDocEventArgs)e).Document;
 			Bridge.SetUiApp(new UIApplication(doc.Application));
 			Bridge.SetDocument(doc);
+			Bridge.OnViewChanged(doc, doc.ActiveView);
 			Log.Write("ViewActivated: документ сменён");
 		}
 		catch (Exception ex)

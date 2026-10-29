@@ -7,6 +7,8 @@ using Autodesk.Revit.UI;
 using ColorLeaves.Core;
 using ColorLeaves.Revit.UI;
 
+using View = Autodesk.Revit.DB.View;
+
 namespace ColorLeaves.Revit;
 
 public static class Bridge
@@ -32,6 +34,14 @@ public static class Bridge
 	private static bool _verifyRequested;
 
 	private static bool _workshareCheckRequested;
+
+	private static bool _editedByCleanupDone;
+
+	private static bool _inOwnTransaction;
+
+	private static int _prevActiveSheetId;
+
+	private static readonly Dictionary<int, string> _pendingEditedBy = new Dictionary<int, string>();
 
 	private static string _message = "";
 
@@ -128,6 +138,7 @@ public static class Bridge
 			{
 				return;
 			}
+			DetectSheetEditing(doc, modifiedIds);
 			bool hasSheets = false;
 			foreach (ElementId id in modifiedIds)
 			{
@@ -196,6 +207,244 @@ public static class Bridge
 		}
 	}
 
+	/// <summary>
+	/// Автозаполнение «Редактирует»: если в транзакции затронут лист, который сейчас
+	/// активен у пользователя, — вписываем его имя в параметр (если значение изменилось).
+	/// </summary>
+	private static void DetectSheetEditing(Document doc, ICollection<ElementId> modifiedIds)
+	{
+		try
+		{
+			if (!StageSettings.Instance.AutoEditedBy)
+			{
+				return;
+			}
+			if (_inOwnTransaction)
+			{
+				return;
+			}
+			if (_document == null || doc.IsFamilyDocument)
+			{
+				return;
+			}
+			ViewSheet activeSheet = null;
+			try
+			{
+				activeSheet = _uiApp?.ActiveUIDocument?.ActiveView as ViewSheet;
+			}
+			catch
+			{
+				return;
+			}
+			if (activeSheet == null)
+			{
+				return;
+			}
+			bool touches = false;
+			foreach (ElementId id in modifiedIds)
+			{
+				if (id == activeSheet.Id)
+				{
+					touches = true;
+					break;
+				}
+				Element element = doc.GetElement(id);
+				if (element != null && element.OwnerViewId == activeSheet.Id)
+				{
+					touches = true;
+					break;
+				}
+			}
+			if (!touches)
+			{
+				return;
+			}
+			string myName = GetUserName();
+			if (string.IsNullOrEmpty(myName))
+			{
+				return;
+			}
+			string current = SheetReader.LookupText(activeSheet, SheetReader.EditedByParameterName);
+			if (current == myName)
+			{
+				return;
+			}
+			QueueEditedBy(activeSheet.Id.IntegerValue, myName);
+			Log.Write("Авто «Редактирует»: лист " + activeSheet.SheetNumber + " → " + myName);
+		}
+		catch (Exception ex)
+		{
+			Log.Write("DetectSheetEditing: " + ex.Message);
+		}
+	}
+
+	/// <summary>Смена активного вида: уход с листа — очищаем свою запись «Редактирует».</summary>
+	public static void OnViewChanged(Document doc, View activeView)
+	{
+		try
+		{
+			if (doc == null)
+			{
+				return;
+			}
+			if (!object.ReferenceEquals(_document, doc))
+			{
+				SetDocument(doc);
+			}
+			int activeId = 0;
+			if (activeView is ViewSheet activeSheet)
+			{
+				activeId = activeSheet.Id.IntegerValue;
+			}
+			if (_prevActiveSheetId != 0 && _prevActiveSheetId != activeId && StageSettings.Instance.AutoEditedBy)
+			{
+				QueueEditedBy(_prevActiveSheetId, "");
+				Log.Write("Авто «Редактирует»: уход с листа " + _prevActiveSheetId + " — очистка");
+			}
+			_prevActiveSheetId = activeId;
+		}
+		catch (Exception ex)
+		{
+			Log.Write("OnViewChanged: " + ex.Message);
+		}
+	}
+
+	private static string GetUserName()
+	{
+		try
+		{
+			return Environment.UserName ?? "";
+		}
+		catch
+		{
+			return "";
+		}
+	}
+
+	/// <summary>Ставит в очередь значение «Редактирует» для листа (пустая строка — очистка своей записи).</summary>
+	public static void QueueEditedBy(int sheetId, string value)
+	{
+		if (sheetId == 0)
+		{
+			return;
+		}
+		_pendingEditedBy[sheetId] = value ?? "";
+		_forceScan = true;
+	}
+
+	/// <summary>Применяет очередь «Редактирует» одной транзакцией. Очистка — только своих записей.</summary>
+	private static void ApplyEditedBy()
+	{
+		if (_pendingEditedBy.Count == 0)
+		{
+			return;
+		}
+		if (_document == null || _document.IsReadOnly)
+		{
+			_pendingEditedBy.Clear();
+			return;
+		}
+		_inOwnTransaction = true;
+		try
+		{
+			int written = 0;
+			int skipped = 0;
+			Transaction transaction = new Transaction(_document, "Учёт редактирования листа");
+			try
+			{
+				transaction.Start();
+				foreach (KeyValuePair<int, string> item in _pendingEditedBy)
+				{
+					ViewSheet viewSheet = _document.GetElement(new ElementId(item.Key)) as ViewSheet;
+					if (viewSheet == null)
+					{
+						skipped++;
+						continue;
+					}
+					Parameter parameter = viewSheet.LookupParameter(SheetReader.EditedByParameterName);
+					if (parameter == null || parameter.IsReadOnly || (int)parameter.StorageType != 3)
+					{
+						skipped++;
+						continue;
+					}
+					string current = parameter.AsString() ?? "";
+					string target = item.Value ?? "";
+					if (string.IsNullOrEmpty(target) && current != GetUserName())
+					{
+						continue;
+					}
+					if (current == target)
+					{
+						continue;
+					}
+					if (_isWorkshared)
+					{
+						CheckoutStatus checkoutStatus = GetCheckoutStatus(item.Key);
+						if ((int)checkoutStatus == 1)
+						{
+							skipped++;
+							continue;
+						}
+					}
+					parameter.Set(target);
+					written++;
+				}
+				transaction.Commit();
+			}
+			finally
+			{
+				transaction.Dispose();
+			}
+			Log.Write("Учёт редактирования: записано " + written + ", пропущено " + skipped);
+		}
+		catch (Exception ex)
+		{
+			Log.Write("ApplyEditedBy: " + ex.Message);
+		}
+		finally
+		{
+			_inOwnTransaction = false;
+			_pendingEditedBy.Clear();
+			_forceScan = true;
+		}
+	}
+
+	/// <summary>При первом скане после открытия документа убирает свои устаревшие записи «Редактирует».</summary>
+	private static void CleanupEditedByAtStartup()
+	{
+		if (_editedByCleanupDone || !StageSettings.Instance.AutoEditedBy)
+		{
+			return;
+		}
+		_editedByCleanupDone = true;
+		try
+		{
+			int activeId = 0;
+			try
+			{
+				activeId = _uiApp?.ActiveUIDocument?.ActiveView?.Id.IntegerValue ?? 0;
+			}
+			catch
+			{
+			}
+			foreach (SheetRow row in _rows)
+			{
+				if (row.EditedBy == GetUserName() && row.Id != activeId)
+				{
+					QueueEditedBy(row.Id, "");
+				}
+			}
+			if (_pendingEditedBy.Count > 0)
+			{
+				Log.Write("Очистка устаревших записей «Редактирует»: " + _pendingEditedBy.Count);
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Write("CleanupEditedByAtStartup: " + ex.Message);
+		}
+	}
+
 	public static void RequestRefresh()
 	{
 		_forceScan = true;
@@ -253,6 +502,14 @@ public static class Bridge
 				VerifyWriteNow();
 			}
 			ApplyPending();
+			if (StageSettings.Instance.AutoEditedBy)
+			{
+				ApplyEditedBy();
+			}
+			else
+			{
+				_pendingEditedBy.Clear();
+			}
 			if (_workshareCheckRequested)
 			{
 				_workshareCheckRequested = false;
@@ -279,6 +536,7 @@ public static class Bridge
 				}
 			}
 			_rows = SheetReader.Read(_document);
+			CleanupEditedByAtStartup();
 			LogDiagnosisIfChanged();
 			if (_diag.Writable)
 			{
@@ -543,7 +801,15 @@ public static class Bridge
 			val2.SaveLocalAfter = true;
 			val2.Compact = false;
 			val2.Comment = "Синхронизация из «Цветных листиков»";
-			_document.SynchronizeWithCentral(val, val2);
+			_inOwnTransaction = true;
+			try
+			{
+				_document.SynchronizeWithCentral(val, val2);
+			}
+			finally
+			{
+				_inOwnTransaction = false;
+			}
 			_lastSyncTime = DateTime.Now;
 			_forceScan = true;
 			RequestRefresh();
