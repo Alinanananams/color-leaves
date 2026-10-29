@@ -196,6 +196,7 @@ public class SheetGridControl : UserControl
 		_grid.ReadOnly = false;
 		_grid.CellValueChanged += OnCellValueChanged;
 		_grid.CellPainting += OnCellPainting;
+		_grid.DataError += OnGridDataError;
 		_grid.CellDoubleClick += OnCellDoubleClick;
 		_grid.KeyDown += OnGridKeyDown;
 		DataGridViewTextBoxColumn numberColumn = new DataGridViewTextBoxColumn();
@@ -264,9 +265,19 @@ public class SheetGridControl : UserControl
 			_groupButton.Checked = StageSettings.Instance.GroupByStage;
 			DataGridViewComboBoxColumn stageColumn = _grid.Columns[ColStage] as DataGridViewComboBoxColumn;
 			List<string> names = StageSettings.Instance.Names;
-			if (stageColumn != null && !SameItems(stageColumn, names))
+			// К настроенным стадиям добавляем неизвестные значения из проекта —
+			// иначе комбобокс бросает DataError на листах с «нестандартной» стадией
+			List<string> comboNames = new List<string>(names);
+			foreach (SheetRow row in Bridge.Rows)
 			{
-				stageColumn.DataSource = names;
+				if (!string.IsNullOrEmpty(row.Stage) && !comboNames.Contains(row.Stage))
+				{
+					comboNames.Add(row.Stage);
+				}
+			}
+			if (stageColumn != null && !SameItems(stageColumn, comboNames))
+			{
+				stageColumn.DataSource = comboNames;
 			}
 			foreach (DataGridViewColumn column in _grid.Columns)
 			{
@@ -641,6 +652,28 @@ public class SheetGridControl : UserControl
 			}
 			e.Handled = true;
 		}
+	}
+
+	/// <summary>
+	/// Подавляет стандартный диалог DataError: он появлялся, когда у листа стадия,
+	/// которой нет в настроенном списке (кто-то вписал её вручную в параметр).
+	/// Детали пишутся в лог, а неизвестные стадии добавляются в список комбобокса.
+	/// </summary>
+	private void OnGridDataError(object sender, DataGridViewDataErrorEventArgs e)
+	{
+		string value = "";
+		try
+		{
+			if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
+			{
+				value = Convert.ToString(_grid.Rows[e.RowIndex].Cells[e.ColumnIndex].Value);
+			}
+		}
+		catch
+		{
+		}
+		Log.Write("DataGridView DataError: " + e.Exception.Message + " (строка " + e.RowIndex + ", колонка " + e.ColumnIndex + ", значение '" + value + "')");
+		e.ThrowException = false;
 	}
 
 	private void OnCellValueChanged(object sender, DataGridViewCellEventArgs e)

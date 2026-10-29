@@ -5,6 +5,9 @@
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2021.*"/>
     <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2021.*"/>
   </ItemGroup>

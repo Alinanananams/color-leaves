@@ -2,6 +2,7 @@
 bin/
 obj/
 *.log
+*.exe
 
 # Visual Studio
 .vs/

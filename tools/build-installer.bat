@@ -1,7 +1,6 @@
 @echo off
-chcp 65001 >nul
-REM Сборка установщика Color Leaves (exe с зашитыми файлами плагина)
-REM Требуется: собранный Release (dotnet build build\ColorLeaves.sln -c Release)
+REM Build Color Leaves setup exe (files embedded as resources)
+REM Requires: Release build first (dotnet build build\ColorLeaves.sln -c Release)
 
 setlocal
 set CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe
@@ -14,7 +13,7 @@ for /f "usebackq" %%v in ("%~dp0..\Version.txt") do set VER=%%v
 set OUT=%~dp0..\ColorLeaves-%VER%-setup.exe
 
 if not exist "%BIN%\ColorLeaves.Revit.dll" (
-    echo ОШИБКА: сначала соберите Release: dotnet build build\ColorLeaves.sln -c Release
+    echo ERROR: build Release first: dotnet build build\ColorLeaves.sln -c Release
     exit /b 1
 )
 
@@ -27,8 +26,8 @@ pushd "%BIN%"
 popd
 
 if exist "%OUT%" (
-    echo Установщик собран: %OUT%
+    echo Setup built: %OUT%
 ) else (
-    echo ОШИБКА СБОРКИ УСТАНОВЩИКА
+    echo ERROR: setup build failed
     exit /b 1
 )

@@ -29,11 +29,33 @@ namespace ColorLeaves.Installer
         };
 
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
+            foreach (string arg in args)
+            {
+                if (string.Equals(arg, "/silent", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(arg, "-silent", StringComparison.OrdinalIgnoreCase))
+                {
+                    Environment.Exit(InstallSilently());
+                    return;
+                }
+            }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(BuildForm());
+        }
+
+        private static int InstallSilently()
+        {
+            try
+            {
+                Install();
+                return 0;
+            }
+            catch
+            {
+                return 1;
+            }
         }
 
         private static Form BuildForm()
@@ -87,40 +109,45 @@ namespace ColorLeaves.Installer
                 Application.Exit();
                 return;
             }
-            Install();
+            InstallWithUi();
         }
 
         private static void Install()
+        {
+            if (!Directory.Exists(TargetDir))
+            {
+                Directory.CreateDirectory(TargetDir);
+            }
+            string[] files = Files;
+            for (int i = 0; i < files.Length; i++)
+            {
+                using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(files[i]))
+                {
+                    if (stream == null)
+                    {
+                        throw new FileNotFoundException("Ресурс не найден в установщике: " + files[i]);
+                    }
+                    string path = Path.Combine(TargetDir, files[i]);
+                    if (File.Exists(path))
+                    {
+                        File.Delete(path);
+                    }
+                    using (FileStream fileStream = File.Create(path))
+                    {
+                        stream.CopyTo(fileStream);
+                    }
+                }
+            }
+        }
+
+        private static void InstallWithUi()
         {
             _installButton.Enabled = false;
             _status.ForeColor = System.Drawing.Color.Black;
             _status.Text = "Установка...";
             try
             {
-                if (!Directory.Exists(TargetDir))
-                {
-                    Directory.CreateDirectory(TargetDir);
-                }
-                string[] files = Files;
-                for (int i = 0; i < files.Length; i++)
-                {
-                    using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(files[i]))
-                    {
-                        if (stream == null)
-                        {
-                            throw new FileNotFoundException("Ресурс не найден в установщике: " + files[i]);
-                        }
-                        string path = Path.Combine(TargetDir, files[i]);
-                        if (File.Exists(path))
-                        {
-                            File.Delete(path);
-                        }
-                        using (FileStream fileStream = File.Create(path))
-                        {
-                            stream.CopyTo(fileStream);
-                        }
-                    }
-                }
+                Install();
                 _status.ForeColor = System.Drawing.Color.FromArgb(0, 120, 60);
                 _status.Text = "Готово! Запустите Revit 2021 — вкладка «Цветные листики».";
                 _installButton.Text = "Закрыть";

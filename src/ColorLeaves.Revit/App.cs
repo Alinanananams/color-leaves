@@ -102,6 +102,8 @@ public class App : IExternalApplication
 			PushButtonData val3 = new PushButtonData("ColorLeaves_Refresh", "Обновить", location, "ColorLeaves.Revit.Commands.RefreshCommand");
 			PushButtonData val4 = new PushButtonData("ColorLeaves_Colors", "Цвета\nстадий", location, "ColorLeaves.Revit.Commands.ColorsCommand");
 			PushButtonData val5 = new PushButtonData("ColorLeaves_CreateParameter", "Создать\nпараметр", location, "ColorLeaves.Revit.Commands.CreateParameterCommand");
+			PushButtonData val6 = new PushButtonData("ColorLeaves_Update", "Обновления", location, "ColorLeaves.Revit.Commands.UpdateCommand");
+			val6.ToolTip = "Проверить наличие новой версии плагина";
 			ApplyIcon(val2, "sheet.png");
 			ApplyIcon(val3, "refresh.png");
 			ApplyIcon(val4, "colors.png");
@@ -110,6 +112,7 @@ public class App : IExternalApplication
 			val.AddItem((RibbonItemData)(object)val3);
 			val.AddItem((RibbonItemData)(object)val4);
 			val.AddItem((RibbonItemData)(object)val5);
+			val.AddItem((RibbonItemData)(object)val6);
 			Log.Write("Лента создана на вкладке «Цветные листики»");
 		}
 		catch (Exception ex2)
