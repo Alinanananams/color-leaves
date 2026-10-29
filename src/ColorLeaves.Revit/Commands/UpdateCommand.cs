@@ -38,9 +38,10 @@ public class UpdateCommand : IExternalCommand
 				return Result.Succeeded;
 			}
 
+			string latestText = (string.IsNullOrEmpty(latest.Tag) ? latest.Version.ToString(3) : latest.Tag);
 			TaskDialog taskDialog = new TaskDialog("Color Leaves — доступно обновление")
 			{
-				MainInstruction = "Доступна версия " + latest.Version.ToString(3) + " (у вас " + currentText + ")",
+				MainInstruction = "Доступна версия " + latestText + " (у вас " + currentText + ")",
 				MainContent = (string.IsNullOrEmpty(latest.Notes) ? "" : latest.Notes + "\r\n\r\n") + "Скачать и установить сейчас?",
 				MainIcon = TaskDialogIcon.TaskDialogIconInformation,
 				CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,

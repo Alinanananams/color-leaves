@@ -91,6 +91,12 @@ public static class UpdateChecker
 			return false;
 		}
 		string s = tag.TrimStart('v', 'V');
+		// Поддержка суффиксов prerelease: "1.3.0-beta" → 1.3.0
+		int dash = s.IndexOf('-');
+		if (dash >= 0)
+		{
+			s = s.Substring(0, dash);
+		}
 		return Version.TryParse(s, out version);
 	}
 
