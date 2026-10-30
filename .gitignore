@@ -3,6 +3,7 @@ bin/
 obj/
 *.log
 *.exe
+ColorLeaves-*.zip
 
 # Visual Studio
 .vs/
