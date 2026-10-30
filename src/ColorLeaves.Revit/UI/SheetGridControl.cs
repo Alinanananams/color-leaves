@@ -218,9 +218,13 @@ public class SheetGridControl : UserControl
 		_grid.CellValueChanged += OnCellValueChanged;
 		_grid.CellPainting += OnCellPainting;
 		_grid.DataError += OnGridDataError;
+		_grid.CellDoubleClick += OnCellDoubleClick;
+		_grid.CellMouseEnter += OnCellMouseEnter;
+		_grid.CellMouseLeave += OnCellMouseLeave;
 		DataGridViewTextBoxColumn numberColumn = new DataGridViewTextBoxColumn();
 		numberColumn.HeaderText = "№ листа";
 		numberColumn.Name = "Number";
+		numberColumn.ToolTipText = "Двойной клик по номеру — открыть лист в окне";
 		numberColumn.Width = 110;
 		numberColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
 		DataGridViewTextBoxColumn nameColumn = new DataGridViewTextBoxColumn();
@@ -572,15 +576,15 @@ public class SheetGridControl : UserControl
 		gridRow.Cells[ColEditedBy].Value = sheetRow.EditedBy;
 		if (!string.IsNullOrEmpty(sheetRow.LockedBy))
 		{
-			gridRow.Cells[ColNumber].ToolTipText = "Лист открыт другим пользователем: " + sheetRow.LockedBy + Environment.NewLine + "Стадию изменить нельзя, пока он его не закроет.";
+			gridRow.Cells[ColNumber].ToolTipText = "Лист открыт другим пользователем: " + sheetRow.LockedBy + Environment.NewLine + "Стадию изменить нельзя, пока он его не закроет." + Environment.NewLine + "Двойной клик — открыть лист.";
 		}
 		else if (sheetRow.UpdatedInCentral)
 		{
-			gridRow.Cells[ColNumber].ToolTipText = "В центральной модели есть обновления — нажмите «Обновить».";
+			gridRow.Cells[ColNumber].ToolTipText = "В центральной модели есть обновления — нажмите «Обновить»." + Environment.NewLine + "Двойной клик — открыть лист.";
 		}
 		else
 		{
-			gridRow.Cells[ColNumber].ToolTipText = "";
+			gridRow.Cells[ColNumber].ToolTipText = "Двойной клик — открыть лист.";
 		}
 		DataGridViewCell stageCell = gridRow.Cells[ColStage];
 		if (!string.Equals(Convert.ToString(stageCell.Value), sheetRow.Stage, StringComparison.Ordinal))
@@ -744,6 +748,39 @@ public class SheetGridControl : UserControl
 		Bridge.QueueStage(sheetRow.Id, text);
 	}
 
+	/// <summary>Двойной клик по ячейке «№ листа» — открыть лист в окне Revit.</summary>
+	private void OnCellDoubleClick(object sender, DataGridViewCellEventArgs e)
+	{
+		if (e.RowIndex < 0 || e.ColumnIndex != ColNumber)
+		{
+			return;
+		}
+		// Заголовок группы (группировка по стадиям) не открываем — там нет листа
+		if (!(_grid.Rows[e.RowIndex].Tag is SheetRow sheetRow))
+		{
+			return;
+		}
+		Log.Write("Переход к листу " + sheetRow.Number + " (" + sheetRow.Id + ")");
+		Bridge.RequestOpenSheet(sheetRow.Id);
+	}
+
+	/// <summary>Курсор «рука» над номером листа — подсказка, что ячейка кликабельна.</summary>
+	private void OnCellMouseEnter(object sender, DataGridViewCellEventArgs e)
+	{
+		if (e.ColumnIndex == ColNumber && e.RowIndex >= 0 && _grid.Rows[e.RowIndex].Tag is SheetRow)
+		{
+			_grid.Cursor = Cursors.Hand;
+		}
+	}
+
+	private void OnCellMouseLeave(object sender, DataGridViewCellEventArgs e)
+	{
+		if (e.ColumnIndex == ColNumber)
+		{
+			_grid.Cursor = Cursors.Default;
+		}
+	}
+
 	private static string PluralSheets(int count)
 	{
 		int mod100 = count % 100;
@@ -819,6 +856,9 @@ public class SheetGridControl : UserControl
 		StringBuilder stringBuilder = new StringBuilder();
 		stringBuilder.AppendLine("Листов в проекте: " + diag.SheetsTotal);
 		stringBuilder.AppendLine("Ищем параметр:      Стадия готовности");
+		stringBuilder.AppendLine();
+		stringBuilder.AppendLine("=== Параметр «Редактирует» на активном листе ===");
+		stringBuilder.Append(Bridge.DescribeEditedByOnActiveSheet());
 		stringBuilder.AppendLine();
 		stringBuilder.AppendLine("Результат: " + diag.Detail);
 		if (!string.IsNullOrEmpty(diag.SheetNumber))

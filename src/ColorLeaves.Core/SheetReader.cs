@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Autodesk.Revit.DB;
 
 namespace ColorLeaves.Core;
@@ -117,7 +118,7 @@ public static class SheetReader
 		sheetRow.CheckedBy = Text((Element)(object)val2, (BuiltInParameter)(-1007405));
 		sheetRow.ApprovedBy = Text((Element)(object)val2, (BuiltInParameter)(-1007408));
 		sheetRow.IssueDate = Text((Element)(object)val2, (BuiltInParameter)(-1006322));
-		sheetRow.EditedBy = LookupText((Element)(object)val2, EditedByParameterName);
+		sheetRow.EditedBy = ReadEditedBy(val2);
 		string text = ReadManualStage(val2);
 		if (!string.IsNullOrEmpty(text))
 		{
@@ -165,23 +166,186 @@ public static class SheetReader
 	/// <summary>Читает текстовый параметр по имени (пустая строка, если параметра нет).</summary>
 	public static string LookupText(Element element, string parameterName)
 	{
-		Parameter val = element.LookupParameter(parameterName);
-		if (val == null || val.IsReadOnly)
+		string value;
+		ReadTextWithReason(element, parameterName, out value);
+		return value;
+	}
+
+	/// <summary>
+	/// Читает текстовый параметр и объясняет причину пустого результата:
+	/// «не найден», «только чтение», «не текст». При успехе reason пустой.
+	/// </summary>
+	public static string ReadTextWithReason(Element element, string parameterName, out string value)
+	{
+		value = "";
+		if (element == null)
 		{
-			return "";
+			return "элемент не найден";
+		}
+		Parameter val = element.LookupParameter(parameterName);
+		if (val == null)
+		{
+			return "параметр с таким именем не найден";
+		}
+		if (val.IsReadOnly)
+		{
+			return "параметр только для чтения";
 		}
 		try
 		{
 			if ((int)val.StorageType != 3)
 			{
-				return "";
+				return "тип данных не «Текст», а " + val.StorageType;
 			}
-			return val.AsString() ?? "";
+			value = val.AsString() ?? "";
+			return "";
 		}
-		catch
+		catch (Exception ex)
+		{
+			return "ошибка чтения: " + ex.Message;
+		}
+	}
+
+	/// <summary>
+	/// Кто редактирует лист. В русской версии Revit «Редактирует» — это ещё и
+	/// встроенный параметр совместной работы (только чтение): Revit сам вписывает
+	/// туда имя пользователя, когда тот берёт лист, и очищает при освобождении.
+	/// LookupParameter по имени находит именно его, поэтому встроенный читаем
+	/// напрямую по BuiltInParameter, а пользовательский текстовый параметр —
+	/// как запасной вариант (в проектах, где встроенного нет).
+	/// </summary>
+	public static string ReadEditedBy(ViewSheet sheet)
+	{
+		if (sheet == null)
 		{
 			return "";
 		}
+		try
+		{
+			Parameter builtin = ((Element)sheet).get_Parameter(BuiltInParameter.EDITED_BY);
+			if (builtin != null)
+			{
+				string who = builtin.AsString();
+				if (!string.IsNullOrEmpty(who))
+				{
+					return who.Trim();
+				}
+			}
+		}
+		catch
+		{
+		}
+		return LookupText((Element)(object)sheet, EditedByParameterName);
+	}
+
+	/// <summary>Есть ли на листе встроенный параметр «Редактирует» (в общих моделях его ведёт сам Revit).</summary>
+	public static bool HasBuiltInEditedBy(ViewSheet sheet)
+	{
+		if (sheet == null)
+		{
+			return false;
+		}
+		try
+		{
+			return ((Element)sheet).get_Parameter(BuiltInParameter.EDITED_BY) != null;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Отчёт для диагностики: все параметры с именем вида «Редактир…» на листе и его типе.
+	/// Показывает точное имя и коды символов (вскрывает латинские буквы-двойники и
+	/// невидимые пробелы), read-only, тип данных, значение и GUID общего параметра.
+	/// </summary>
+	public static string DescribeEditedByParameters(ViewSheet sheet)
+	{
+		StringBuilder report = new StringBuilder();
+		AppendEditedByParamReport(report, "ЭКЗЕМПЛЯР листа", (Element)sheet);
+		Element typeElement = null;
+		try
+		{
+			typeElement = ((Element)sheet).Document.GetElement(((Element)sheet).GetTypeId());
+		}
+		catch
+		{
+		}
+		if (typeElement != null)
+		{
+			AppendEditedByParamReport(report, "ТИП листа", typeElement);
+		}
+		if (report.Length == 0)
+		{
+			report.AppendLine("  параметр с именем вида «Редактир…» не найден ни на листе, ни на типе.");
+		}
+		return report.ToString();
+	}
+
+	private static void AppendEditedByParamReport(StringBuilder report, string where, Element element)
+	{
+		bool any = false;
+		IList<Parameter> parameters = element.GetOrderedParameters();
+		foreach (Parameter parameter in parameters)
+		{
+			string name = "";
+			try
+			{
+				name = parameter.Definition.Name ?? "";
+			}
+			catch
+			{
+			}
+			if (name.IndexOf("редактир", StringComparison.OrdinalIgnoreCase) < 0)
+			{
+				continue;
+			}
+			if (!any)
+			{
+				report.AppendLine(where + ":");
+				any = true;
+			}
+			string shared = parameter.IsShared ? ("общий, GUID=" + parameter.GUID) : "не общий (встроенный либо проектный)";
+			string state;
+			if (parameter.IsReadOnly)
+			{
+				state = "ТОЛЬКО ЧТЕНИЕ";
+			}
+			else if ((int)parameter.StorageType != 3)
+			{
+				state = "тип данных не «Текст», а " + parameter.StorageType;
+			}
+			else
+			{
+				string value = "";
+				try
+				{
+					value = parameter.AsString() ?? "";
+				}
+				catch
+				{
+				}
+				state = string.IsNullOrEmpty(value) ? "пусто" : ("значение «" + value + "»");
+			}
+			report.AppendLine("  имя: «" + name + "»  (" + shared + ", " + state + ")");
+			report.AppendLine("  коды имени: " + CharCodes(name));
+		}
+	}
+
+	/// <summary>Коды символов строки в hex — видно любое отличие от канонического имени.</summary>
+	private static string CharCodes(string text)
+	{
+		StringBuilder sb = new StringBuilder();
+		foreach (char c in text)
+		{
+			if (sb.Length > 0)
+			{
+				sb.Append(' ');
+			}
+			sb.Append(((int)c).ToString("X4"));
+		}
+		return sb.ToString();
 	}
 
 	public static Parameter LookupStageParameter(Document doc)

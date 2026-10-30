@@ -37,9 +37,15 @@ public static class Bridge
 
 	private static bool _editedByCleanupDone;
 
+	private static bool _builtInEditedByWarned;
+
 	private static bool _inOwnTransaction;
 
 	private static int _prevActiveSheetId;
+
+	private static int _pendingOpenSheetId;
+
+	private static int _openSheetAttempts;
 
 	private static readonly Dictionary<int, string> _pendingEditedBy = new Dictionary<int, string>();
 
@@ -112,6 +118,62 @@ public static class Bridge
 		_forceScan = true;
 	}
 
+	/// <summary>Запросить открытие листа в активном окне (двойной клик по номеру листа).</summary>
+	public static void RequestOpenSheet(int sheetId)
+	{
+		if (sheetId != 0)
+		{
+			_pendingOpenSheetId = sheetId;
+			_openSheetAttempts = 0;
+			_forceScan = true;
+			Log.Write("Запрошено открытие листа " + sheetId);
+		}
+	}
+
+	/// <summary>Назначает лист активным видом. Вызывается только из Tick — Revit должен быть свободен.</summary>
+	private static void OpenSheet(int sheetId)
+	{
+		try
+		{
+			if (_uiApp == null || _uiApp.ActiveUIDocument == null || _document == null)
+			{
+				SetMessage("Нет активного документа — откройте проект и повторите.");
+				Log.Write("Открытие листа: нет активного документа");
+				return;
+			}
+			ViewSheet viewSheet = _document.GetElement(new ElementId(sheetId)) as ViewSheet;
+			if (viewSheet == null)
+			{
+				SetMessage("Лист не найден — возможно, он был удалён.");
+				Log.Write("Открытие листа: лист " + sheetId + " не найден в модели");
+				return;
+			}
+			// RequestViewChange, а не присваивание ActiveView: в контексте Idling
+			// присваивание отклоняется («Setting active view is temporarily disabled»),
+			// а RequestViewChange для этого и предназначен (как в SheetViewsMap).
+			_uiApp.ActiveUIDocument.RequestViewChange(viewSheet);
+			Log.Write("Открыт лист " + viewSheet.SheetNumber + " (попытка " + (_openSheetAttempts + 1) + ")");
+			_openSheetAttempts = 0;
+		}
+		catch (Exception ex)
+		{
+			// Revit бывает занят (редактирование, диалог) и отклоняет смену вида —
+			// пробуем ещё раз на следующем одноразовом Idling, максимум 3 попытки.
+			_openSheetAttempts++;
+			Log.Write("Открытие листа: попытка " + _openSheetAttempts + " не удалась: " + ex.Message);
+			if (_openSheetAttempts >= 3)
+			{
+				SetMessage("Не удалось открыть лист: " + ex.Message);
+				_openSheetAttempts = 0;
+			}
+			else
+			{
+				_pendingOpenSheetId = sheetId;
+				_forceScan = true;
+			}
+		}
+	}
+
 	public static void SetDocument(Document doc)
 	{
 		bool flag = !object.ReferenceEquals(_document, doc);
@@ -180,6 +242,13 @@ public static class Bridge
 					!string.Equals(sheetRow2.IssueDate, sheetRow.IssueDate, StringComparison.Ordinal) ||
 					sheetRow2.StageIsManual != sheetRow.StageIsManual)
 				{
+					if (!string.IsNullOrEmpty(sheetRow2.EditedBy) && string.IsNullOrEmpty(sheetRow.EditedBy))
+					{
+						// В модели значение есть, а перечиталось пусто — важный след для диагностики
+						string flipValue;
+						string flipReason = SheetReader.ReadTextWithReason(doc.GetElement(id2), SheetReader.EditedByParameterName, out flipValue);
+						Log.Write("DocumentChanged: лист " + sheetRow2.Number + ": «Редактирует» было «" + sheetRow2.EditedBy + "», прочитано пусто — " + (flipReason.Length == 0 ? "в модели действительно пусто" : flipReason));
+					}
 					sheetRow2.Number = sheetRow.Number;
 					sheetRow2.Name = sheetRow.Name;
 					sheetRow2.Stage = sheetRow.Stage;
@@ -328,8 +397,48 @@ public static class Bridge
 		{
 			return;
 		}
+		if (_document != null)
+		{
+			ViewSheet viewSheet = _document.GetElement(new ElementId(sheetId)) as ViewSheet;
+			if (viewSheet != null && SheetReader.HasBuiltInEditedBy(viewSheet))
+			{
+				// В русской версии Revit «Редактирует» — встроенный параметр совместной работы
+				// (только чтение): его заполняет и очищает сам Revit, ручные записи не нужны.
+				WarnBuiltInEditedBy();
+				return;
+			}
+		}
 		_pendingEditedBy[sheetId] = value ?? "";
 		_forceScan = true;
+	}
+
+	/// <summary>Разовое пояснение в логе про встроенный параметр «Редактирует».</summary>
+	private static void WarnBuiltInEditedBy()
+	{
+		if (_builtInEditedByWarned)
+		{
+			return;
+		}
+		_builtInEditedByWarned = true;
+		Log.Write("«Редактирует» здесь — встроенный параметр Revit (совместная работа, только чтение): заполняется и очищается самим Revit при работе с листом. Автозаполнение плагином не требуется и отключено.");
+	}
+
+	/// <summary>Отчёт о параметрах «Редактирует» на активном листе (для кнопки «Диагностика»).</summary>
+	public static string DescribeEditedByOnActiveSheet()
+	{
+		try
+		{
+			ViewSheet viewSheet = _uiApp?.ActiveUIDocument?.ActiveView as ViewSheet;
+			if (viewSheet == null)
+			{
+				return "  (активный вид — не лист; откройте лист и нажмите «Диагностика» ещё раз)";
+			}
+			return SheetReader.DescribeEditedByParameters(viewSheet);
+		}
+		catch (Exception ex)
+		{
+			return "  (ошибка: " + ex.Message + ")";
+		}
 	}
 
 	/// <summary>Применяет очередь «Редактирует» одной транзакцией. Очистка — только своих записей.</summary>
@@ -365,6 +474,21 @@ public static class Bridge
 					if (parameter == null || parameter.IsReadOnly || (int)parameter.StorageType != 3)
 					{
 						skipped++;
+						string reason;
+						if (parameter == null)
+						{
+							reason = "параметр «Редактирует» не найден (проверьте имя и дубли: Управление → Параметры проекта)";
+						}
+						else if (parameter.IsReadOnly)
+						{
+							reason = "параметр только для чтения";
+							WarnBuiltInEditedBy();
+						}
+						else
+						{
+							reason = "тип данных не «Текст», а " + parameter.StorageType;
+						}
+						Log.Write("Учёт редактирования: лист " + viewSheet.SheetNumber + " пропущен — " + reason);
 						continue;
 					}
 					string current = parameter.AsString() ?? "";
@@ -383,6 +507,7 @@ public static class Bridge
 						if ((int)checkoutStatus == 1)
 						{
 							skipped++;
+							Log.Write("Учёт редактирования: лист " + viewSheet.SheetNumber + " пропущен — занят другим пользователем");
 							continue;
 						}
 					}
@@ -500,6 +625,12 @@ public static class Bridge
 			{
 				_verifyRequested = false;
 				VerifyWriteNow();
+			}
+			if (_pendingOpenSheetId != 0)
+			{
+				int sheetIdToOpen = _pendingOpenSheetId;
+				_pendingOpenSheetId = 0;
+				OpenSheet(sheetIdToOpen);
 			}
 			ApplyPending();
 			if (StageSettings.Instance.AutoEditedBy)
