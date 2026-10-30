@@ -146,12 +146,13 @@ public class App : IExternalApplication
 			PushButtonData val3 = new PushButtonData("ColorLeaves_Refresh", "Обновить", location, "ColorLeaves.Revit.Commands.RefreshCommand");
 			PushButtonData val4 = new PushButtonData("ColorLeaves_Colors", "Цвета\nстадий", location, "ColorLeaves.Revit.Commands.ColorsCommand");
 			PushButtonData val5 = new PushButtonData("ColorLeaves_CreateParameter", "Создать\nпараметр", location, "ColorLeaves.Revit.Commands.CreateParameterCommand");
-			PushButtonData val6 = new PushButtonData("ColorLeaves_Update", "Обновления", location, "ColorLeaves.Revit.Commands.UpdateCommand");
-			val6.ToolTip = "Проверить наличие новой версии плагина";
+			PushButtonData val6 = new PushButtonData("ColorLeaves_Settings", "Настройки", location, "ColorLeaves.Revit.Commands.SettingsCommand");
+			val6.ToolTip = "Версия плагина и проверка обновлений";
 			ApplyIcon(val2, "sheet.png");
 			ApplyIcon(val3, "refresh.png");
 			ApplyIcon(val4, "colors.png");
 			ApplyIcon(val5, "parameter.png");
+			ApplyIcon(val6, "settings.png");
 			val.AddItem((RibbonItemData)(object)val2);
 			val.AddItem((RibbonItemData)(object)val3);
 			val.AddItem((RibbonItemData)(object)val4);

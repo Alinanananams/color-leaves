@@ -21,7 +21,7 @@ New-Item -ItemType Directory -Path (Join-Path $stage "ColorLeaves") | Out-Null
 Copy-Item $addin (Join-Path $stage "ColorLeaves.addin")
 Copy-Item (Join-Path $bin "ColorLeaves.Revit.dll") (Join-Path $stage "ColorLeaves")
 Copy-Item (Join-Path $bin "ColorLeaves.Core.dll") (Join-Path $stage "ColorLeaves")
-foreach ($png in @("sheet.png", "refresh.png", "colors.png", "parameter.png")) {
+foreach ($png in @("sheet.png", "refresh.png", "colors.png", "parameter.png", "settings.png")) {
     Copy-Item (Join-Path $res $png) (Join-Path $stage "ColorLeaves")
 }
 

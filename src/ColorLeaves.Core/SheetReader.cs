@@ -228,7 +228,8 @@ public static class SheetReader
 				string who = builtin.AsString();
 				if (!string.IsNullOrEmpty(who))
 				{
-					return who.Trim();
+					// Revit дописывает пометку вида «имя (не последний)» — в колонке показываем только имя
+					return StripEditorMark(who);
 				}
 			}
 		}
@@ -236,6 +237,21 @@ public static class SheetReader
 		{
 		}
 		return LookupText((Element)(object)sheet, EditedByParameterName);
+	}
+
+	/// <summary>Убирает хвостовую пометку Revit в скобках: «имя (не последний)» → «имя».</summary>
+	private static string StripEditorMark(string who)
+	{
+		who = who.Trim();
+		if (who.EndsWith(")"))
+		{
+			int idx = who.LastIndexOf(" (", StringComparison.Ordinal);
+			if (idx > 0)
+			{
+				who = who.Substring(0, idx).TrimEnd();
+			}
+		}
+		return who;
 	}
 
 	/// <summary>Есть ли на листе встроенный параметр «Редактирует» (в общих моделях его ведёт сам Revit).</summary>
