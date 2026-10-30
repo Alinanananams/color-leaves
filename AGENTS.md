@@ -2,34 +2,82 @@
 
 ## Проект
 
-**Color Leaves** — C#-плагин для Autodesk Revit 2021, автоматизирующий раскраску листов по сборкам.
-Версия плагина хранится в `Version.txt` (единый источник).
+**Color Leaves** («Цветные листики») — C#-плагин для Autodesk Revit 2021: панель стадий готовности листов с цветовой подсветкой, фильтрами, группировкой и автоучётом параметра «Редактирует».
+Версия хранится в `Version.txt` (единый источник). Репозиторий: `Alinanananams/color-leaves`.
 
 ## Технологии
 
-- C# / .NET Framework 4.8 (net48), WPF для UI
-- Revit API через NuGet-пакеты `Nice3point.Revit.Api.*` — **никогда** не ссылаться на локальные `RevitAPI.dll` / `RevitAPIUI.dll`
-- Архитектура: Commands → Services → Models (тонкие команды, вся логика в сервисах)
-- UI по шаблону MVVM; ViewModels не должны ссылаться на Revit API
+- C# / .NET Framework 4.8 (net48)
+- Revit API через NuGet-пакеты `Nice3point.Revit.Api.RevitAPI` + `RevitAPIUI` (2021.*) — **никогда** не ссылаться на локальные `RevitAPI.dll` / `RevitAPIUI.dll` и не искать метапакет `Nice3point.Revit.Api` (его не существует)
+- UI — **WinForms** (докируемая панель с `DataGridView`), собирается вместе с WPF-флагом в одном csproj
+- Revit API подключается через NuGet — локальный Revit для сборки не нужен
+
+## Архитектура работы — «ноль таймеров»
+
+- Таблица обновляется **событийно**: `DocumentChanged` → среди изменённых элементов ищутся листы → перечитываются только они → обновление строк. Полного фонового скана нет
+- `Idling` — одноразовый паттерн: обработчик мгновенно выходит, если нет запрошенной работы (`Bridge.HasQueuedWork`); вся работа — только по явным действиям пользователя (кнопки, смена документа, очередь правок)
+- Worksharing-опрос (занятость, статусы центральной модели) — **только по требованию**: открытие панели (`DockableFrameVisibilityChanged`), кнопка «Обновить». Никаких периодических опросов — они вызывали лаги
+- Тест записи параметра (`VerifyWriteNow`) — только по кнопке «Диагностика» (меняет модель)
+- Не возвращать периодические опросы без явного запроса пользователя — они были причиной лагов
+
+## Параметры листов
+
+- **«Стадия готовности»** (Текст, Экземпляр) — плагин умеет создавать сам (кнопка «Создать параметр»; в общих моделях автосоздание отключено — конфликт GUID)
+- **«Редактирует»** (Текст, Экземпляр) — плагин **не создаёт**; должен существовать в проекте. Имя — константа `SheetReader.EditedByParameterName`
+- Автозаполнение «Редактирует»: при работе с активным листом вписывается `Environment.UserName`, при уходе с листа — очищается (только свои записи). Тумблер «Авто „Редактирует"» в панели, состояние в `stages.xml`
+- Неизвестные значения стадий (вписанные вручную) не должны ломать комбобокс — они добавляются в список динамически, обработчик `DataError` подавляет диалог
 
 ## Структура
 
 ```
-src/ColorLeaves.Core/        # Модели, константы, утилиты (без UI и Revit-команд)
-src/ColorLeaves.Revit/       # Точка входа (App), Commands/, Services/, UI/, Resources/
+src/ColorLeaves.Core/        # SheetReader, SheetRow, StageDef/StageSettings, ParameterInstaller, Log, UpdateChecker
+src/ColorLeaves.Revit/       # App (лента+панель), Bridge (ядро синхронизации), Commands/, UI/ (WinForms)
 build/ColorLeaves.sln        # Решение
-addins/2021/ColorLeaves.addin   # Манифест для Revit 2021
-DOCS/                        # Планы фич
+addins/2021/ColorLeaves.addin   # Манифест для Revit 2021 (путь к DLL — только относительное имя файла!)
+tools/installer/             # Исходник установщика exe (WinForms, файлы плагина зашиты как ресурсы)
+tools/build-installer.bat    # Сборка установщика (ASCII-only, читает Version.txt)
+DOCS/                        # Планы фич, скриншоты
+AGENTS.md                    # Этот файл
 ```
 
-## Сборка и запуск
+## Сборка, деплой, отладка
 
 ```sh
-dotnet build build/ColorLeaves.sln -c Debug
-build-and-deploy.bat                              # сборка + деплой в %APPDATA%
+dotnet build build/ColorLeaves.sln -c Debug      # или -c Release
+build-and-deploy.bat                             # сборка + деплой
+tools/build-installer.bat                        # установщик exe (нужен собранный Release)
 ```
 
-Отладка: собрать, запустить Revit, в Visual Studio → Debug → Attach to Process → `Revit.exe`.
+- **Деплой требует закрытого Revit** — DLL блокируется процессом (ошибка MSB3021/MSB3027). Если Revit открыт — сборка кода проходит, копирование падает
+- Деплой: DLL + `.addin` + иконки PNG → `%APPDATA%\Autodesk\Revit\Addins\2021\` (цель `CopyAddin` в `Directory.Build.targets`)
+- Отладка: собрать → запустить Revit → Visual Studio → Debug → Attach to Process → `Revit.exe`
+- Лог: `%APPDATA%\Autodesk\Revit\ColorSheets\log.txt`; настройки стадий/видов: `stages.xml` там же
+
+## Грабли (уже однажды пойманы — не повторять)
+
+- В `.addin` путь к сборке — **относительное имя файла** (`ColorLeaves.Revit.dll`); `$(APPDATA)` Revit не разворачивает
+- `csc.exe` (инсталлятор) — C# 5: без file-scoped namespace и новых фич
+- Bat-файлы — только ASCII: `chcp 65001` внутри bat с кириллицей ломает парсер (сдвиг смещения чтения)
+- `Version.txt` — без BOM: BOM ломает `for /f` в bat (появляется мусор в имени файла установщика)
+- `System.Windows.Forms.TaskDialog` (.NET 4.8) конфликтует с `Autodesk.Revit.UI.TaskDialog` — не импортировать WinForms там, где нужен ревитовский
+- `View`, `Color`, `Rectangle` неоднозначны (Revit vs WinForms/Drawing) — использовать алиасы using
+- `Element.get_Parameter(BuiltInParameter)` — ILSpy рендерит как `el[bip]`, в C# так нельзя
+- Ревитовский `TaskDialog` в R2021 не имеет `AddCommandButton` — использовать `CommonButtons`
+- `ViewActivatedEventArgs` в R2021: документ — через каст `((RevitAPIPostDocEventArgs)e).Document`, свойства `Application` нет; `UIApplication` создаётся как `new UIApplication(doc.Application)`
+
+## Релизы и автообновление
+
+- Релизы по образцу assembling-manager: `ColorLeaves-<версия>-setup.exe` (файлы зашиты внутрь, есть `/silent`-режим) + `ColorLeaves-R21.zip` (плоский список файлов для распаковки в Addins)
+- `UpdateChecker` (Core) — GitHub API `releases/latest`, репозиторий публичный; парсер понимает теги с суффиксом (`v1.3.0-beta` → 1.3.0)
+- Кнопка «Обновления» на ленте: сравнение версий → диалог → скачивание setup в %TEMP% → cmd-скрипт ждёт закрытия Revit → `/silent`-установка
+- Текущий последний релиз: `v1.3.0-beta`. Стабильный v1.3.0 не выпущен
+
+## История ключевых решений
+
+- Логика плагина восстановлена декомпиляцией старого `ColorSheets.dll` (был зашит в инсталлятор) и перенесена в новую структуру
+- Пути лога/настроек (`%APPDATA%\Autodesk\Revit\ColorSheets\`) оставлены от старого плагина — настройки стадий сохраняются
+- Функция «переход к листу двойным кликом» удалена по решению пользователя — **не возвращать без запроса**
+- GitHub: `Alinanananams/color-leaves`, topics revit/revit-api/csharp/bim/revit-plugin
 
 ## Правила кода
 
@@ -37,15 +85,15 @@ build-and-deploy.bat                              # сборка + деплой 
 - Все изменения в документе Revit — внутри транзакции; при ошибке транзакция откатывается полностью
 - Не блокировать занятые другими пользователями элементы: проверять занятость, пропускать чужое, отчитываться в сводке
 - Новые команды добавлять в `Commands/`, регистрировать на ленте в `App.cs`
-- Иконки: `icon_small.png` (16×16) и `icon_large.png` (32×32) в `Resources/`
-- `AddInId` (GUID) в `.addin` и `App.cs` не менять без необходимости
+- `AddInId` (GUID) в `.addin` не менять без необходимости
+- Имена параметров («Стадия готовности», «Редактирует») — константы в `SheetReader`, не хардкодить по месту
 
 ## Что запрещено
 
-- Коммитить бинарники (`*.exe`, `*.dll`), файлы `bin/`, `obj/`, `.vs/`
-- Трогать старые файлы в корне (`Обработка.txt`, `Установка.bat`, `Установочный Цветные листики.exe`, `Установка плагина.bat`) — они исключены из репозитория намеренно
+- Коммитить бинарники (`*.exe`, `*.dll`), файлы `bin/`, `obj/`, `.vs/`, собранные setup-файлы
+- Трогать старые файлы в корне (`Инструкция.txt`, `Удалить.bat`, `Установить.bat`, `Установить Цветные листики.exe`) — исключены намеренно
 - Менять `Version.txt` без запроса пользователя
-- Использовать API, отсутствующее в Revit 2021, без `#if` или обёртки совместимости
+- Использовать API, отсутствующее в Revit 2021
 
 ## Стиль ответов ассистента
 
