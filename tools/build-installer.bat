@@ -18,10 +18,11 @@ if not exist "%BIN%\ColorLeaves.Revit.dll" (
 )
 
 pushd "%BIN%"
-"%CSC%" /nologo /target:winexe /out:"%OUT%" /r:System.Windows.Forms.dll /r:System.Drawing.dll ^
+"%CSC%" /nologo /target:winexe /out:"%OUT%" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.dll ^
   "/resource:ColorLeaves.Revit.dll" "/resource:ColorLeaves.Core.dll" ^
   "/resource:%ADDIN%" ^
   "/resource:%RESDIR%\sheet.png" "/resource:%RESDIR%\refresh.png" "/resource:%RESDIR%\colors.png" "/resource:%RESDIR%\parameter.png" ^
+  "/resource:%~dp0..\Version.txt" ^
   "%SRC%"
 popd
 

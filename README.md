@@ -40,11 +40,13 @@ C#-плагин для **Autodesk Revit 2021**: панель стадий гот
 
 **Способ 2 — zip вручную:**
 
-Скачайте `ColorLeaves-R21.zip` со страницы [Releases](https://github.com/Alinanananams/color-leaves/releases) и распакуйте содержимое в `%APPDATA%\Autodesk\Revit\Addins\2021\`.
+Скачайте `ColorLeaves-R21.zip` со страницы [Releases](https://github.com/Alinanananams/color-leaves/releases) и распакуйте в `%APPDATA%\Autodesk\Revit\Addins\2021\`. В корне появится только манифест `ColorLeaves.addin` — файлы плагина лягут в подпапку `ColorLeaves\`.
 
 **Способ 3 — обновление из Revit:**
 
 Если плагин уже установлен (v1.2.0 и новее) — вкладка «Цветные листики» → кнопка **«Обновления»**: плагин проверит последнюю версию на GitHub, скачает и применит обновление после закрытия Revit.
+
+**Удаление:** запустите setup и нажмите «Удалить» (или `ColorLeaves-<версия>-setup.exe /uninstall` при закрытом Revit). Настройки стадий сохраняются — при повторной установке подтянутся.
 
 **Способ 4 — из исходников:**
 

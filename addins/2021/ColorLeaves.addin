@@ -2,7 +2,7 @@
 <RevitAddIns>
   <AddIn Type="Application">
     <Name>ColorLeaves</Name>
-    <Assembly>ColorLeaves.Revit.dll</Assembly>
+    <Assembly>ColorLeaves\ColorLeaves.Revit.dll</Assembly>
     <AddInId>{B2C3D4E5-F6A7-8901-BCDE-F23456789012}</AddInId>
     <FullClassName>ColorLeaves.Revit.App</FullClassName>
     <VendorId>COLORLEAVES</VendorId>

@@ -33,9 +33,10 @@
 src/ColorLeaves.Core/        # SheetReader, SheetRow, StageDef/StageSettings, ParameterInstaller, Log, UpdateChecker
 src/ColorLeaves.Revit/       # App (лента+панель), Bridge (ядро синхронизации), Commands/, UI/ (WinForms)
 build/ColorLeaves.sln        # Решение
-addins/2021/ColorLeaves.addin   # Манифест для Revit 2021 (путь к DLL — только относительное имя файла!)
-tools/installer/             # Исходник установщика exe (WinForms, файлы плагина зашиты как ресурсы)
+addins/2021/ColorLeaves.addin   # Манифест для Revit 2021 (Assembly — относительный подпуть ColorLeaves\ColorLeaves.Revit.dll; в корне Addins лежит только манифест, файлы плагина — в подпапке ColorLeaves\)
+tools/installer/             # Исходник установщика exe (WinForms, файлы плагина зашиты как ресурсы; есть удаление и тихие режимы /silent и /uninstall)
 tools/build-installer.bat    # Сборка установщика (ASCII-only, читает Version.txt)
+tools/build-zip.ps1          # Сборка ColorLeaves-R21.zip (.addin в корне архива, файлы в папке ColorLeaves\)
 DOCS/                        # Планы фич, скриншоты
 AGENTS.md                    # Этот файл
 ```
@@ -55,7 +56,7 @@ tools/build-installer.bat                        # установщик exe (н�
 
 ## Грабли (уже однажды пойманы — не повторять)
 
-- В `.addin` путь к сборке — **относительное имя файла** (`ColorLeaves.Revit.dll`); `$(APPDATA)` Revit не разворачивает
+- В `.addin` путь к сборке — **относительный** (от папки манифеста): работает и имя файла, и подпуть (`ColorLeaves\ColorLeaves.Revit.dll`); `$(APPDATA)` Revit не разворачивает, абсолютные пути в zip-варианте использовать нельзя (у каждого пользователя свой профиль)
 - `csc.exe` (инсталлятор) — C# 5: без file-scoped namespace и новых фич
 - Bat-файлы — только ASCII: `chcp 65001` внутри bat с кириллицей ломает парсер (сдвиг смещения чтения)
 - `Version.txt` — без BOM: BOM ломает `for /f` в bat (появляется мусор в имени файла установщика)
