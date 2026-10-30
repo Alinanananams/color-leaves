@@ -218,6 +218,7 @@ public class SheetGridControl : UserControl
 		_grid.CellValueChanged += OnCellValueChanged;
 		_grid.CellPainting += OnCellPainting;
 		_grid.DataError += OnGridDataError;
+		_grid.CellBeginEdit += OnCellBeginEdit;
 		_grid.CellDoubleClick += OnCellDoubleClick;
 		_grid.CellMouseEnter += OnCellMouseEnter;
 		_grid.CellMouseLeave += OnCellMouseLeave;
@@ -708,6 +709,38 @@ public class SheetGridControl : UserControl
 		e.ThrowException = false;
 	}
 
+	/// <summary>
+	/// Ранний перехват: при клике в ячейку «Стадия» чужого листа сразу отменяем
+	/// редактирование — выпадающий список не открывается, сразу показываем окно занятости.
+	/// </summary>
+	private void OnCellBeginEdit(object sender, DataGridViewCellCancelEventArgs e)
+	{
+		if (e.RowIndex < 0 || e.ColumnIndex != ColStage)
+		{
+			return;
+		}
+		if (!(_grid.Rows[e.RowIndex].Tag is SheetRow sheetRow))
+		{
+			return;
+		}
+		if (!Bridge.IsWorkshared || (int)Bridge.GetCheckoutStatus(sheetRow.Id) != 1)
+		{
+			return;
+		}
+		e.Cancel = true;
+		string checkoutOwner = Bridge.GetCheckoutOwner(sheetRow.Id);
+		Log.Write("Лист " + sheetRow.Number + " открыт другим пользователем (" + checkoutOwner + ") — редактирование стадии не открывалось");
+		Bridge.ShowSheetLocked(sheetRow.Number, sheetRow.Name, checkoutOwner);
+		RequestLockRefresh();
+	}
+
+	/// <summary>После сообщения о занятости обновляет таблицу свежими данными (одноразовый Idling).</summary>
+	private void RequestLockRefresh()
+	{
+		Bridge.RequestWorkshareCheck();
+		Bridge.RequestRefresh();
+	}
+
 	private void OnCellValueChanged(object sender, DataGridViewCellEventArgs e)
 	{
 		if (_suppress || e.RowIndex < 0 || e.ColumnIndex != ColStage)
@@ -739,6 +772,7 @@ public class SheetGridControl : UserControl
 				Log.Write("Лист " + sheetRow.Number + " открыт другим пользователем (" + checkoutOwner + ") — запись отменена");
 				Bridge.ShowSheetLocked(sheetRow.Number, sheetRow.Name, checkoutOwner);
 				FillRow(dataGridViewRow, sheetRow);
+				RequestLockRefresh();
 				return;
 			}
 		}
