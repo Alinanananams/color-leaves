@@ -37,17 +37,11 @@ public class SheetGridControl : UserControl
 
 	private ToolStripLabel _count;
 
-	private ToolStripButton _autoButton;
-
 	private ToolStripButton _diagButton;
-
-	private ToolStripButton _unsetButton;
 
 	private ToolStripButton _createParamButton;
 
 	private ToolStripButton _groupButton;
-
-	private ToolStripButton _autoEditedByButton;
 
 	private ToolStripComboBox _stageFilter;
 
@@ -125,47 +119,27 @@ public class SheetGridControl : UserControl
 				RefreshNow();
 			}
 		};
-		_autoEditedByButton = new ToolStripButton("Авто «Редактирует»");
-		_autoEditedByButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
-		_autoEditedByButton.CheckOnClick = true;
-		_autoEditedByButton.ToolTipText = "Автоматически вписывать имя пользователя в параметр «Редактирует», когда вы работаете с листом, и очищать при уходе";
-		_autoEditedByButton.CheckedChanged += delegate
-		{
-			if (!_suppress)
-			{
-				StageSettings stageSettings = StageSettings.Instance;
-				stageSettings.AutoEditedBy = _autoEditedByButton.Checked;
-				stageSettings.Save();
-				Log.Write("Авто «Редактирует»: " + (_autoEditedByButton.Checked ? "включено" : "выключено"));
-			}
-		};
-		ToolStripButton refreshButton = new ToolStripButton("Обновить");
-		refreshButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
-		refreshButton.Click += delegate
+		// «Обновить» — розовая акцентная кнопка: обычный Button внутри тулбара,
+		// потому что системный рендерер ToolStrip игнорирует BackColor у своих кнопок
+		Button refreshPinkButton = new Button();
+		refreshPinkButton.Text = "Обновить";
+		refreshPinkButton.FlatStyle = FlatStyle.Flat;
+		refreshPinkButton.BackColor = Color.FromArgb(248, 200, 220);
+		refreshPinkButton.FlatAppearance.BorderColor = Color.FromArgb(227, 158, 192);
+		refreshPinkButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(243, 181, 206);
+		refreshPinkButton.ForeColor = Color.FromArgb(122, 59, 85);
+		refreshPinkButton.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+		refreshPinkButton.Cursor = Cursors.Hand;
+		refreshPinkButton.Click += delegate
 		{
 			Bridge.RequestRefresh();
 			RefreshNow();
 		};
-		ToolStripButton colorsButton = new ToolStripButton("Цвета стадий...");
-		colorsButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
-		colorsButton.Click += OnColorsClick;
+		ToolStripControlHost refreshHost = new ToolStripControlHost(refreshPinkButton);
+		refreshHost.Margin = new Padding(2);
 		_diagButton = new ToolStripButton("Диагностика");
 		_diagButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
 		_diagButton.Click += OnDiagClick;
-		_autoButton = new ToolStripButton("Заполнить автоматически");
-		_autoButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
-		_autoButton.Click += delegate
-		{
-			Bridge.RequestAutoFill();
-			Bridge.RequestRefresh();
-		};
-		_unsetButton = new ToolStripButton("Заполнить «Не задана»");
-		_unsetButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
-		_unsetButton.Click += delegate
-		{
-			Bridge.RequestFillUnset();
-			Bridge.RequestRefresh();
-		};
 		_createParamButton = new ToolStripButton("Создать параметр");
 		_createParamButton.DisplayStyle = ToolStripItemDisplayStyle.Text;
 		_createParamButton.Click += delegate
@@ -186,12 +160,8 @@ public class SheetGridControl : UserControl
 		toolStrip.Items.Add(new ToolStripLabel("Стадия: "));
 		toolStrip.Items.Add(_stageFilter);
 		toolStrip.Items.Add(_groupButton);
-		toolStrip.Items.Add(_autoEditedByButton);
 		toolStrip.Items.Add(new ToolStripSeparator());
-		toolStrip.Items.Add(refreshButton);
-		toolStrip.Items.Add(colorsButton);
-		toolStrip.Items.Add(_autoButton);
-		toolStrip.Items.Add(_unsetButton);
+		toolStrip.Items.Add(refreshHost);
 		toolStrip.Items.Add(_createParamButton);
 		toolStrip.Items.Add(_diagButton);
 		toolStrip.Items.Add(_modeLabel);
@@ -292,7 +262,6 @@ public class SheetGridControl : UserControl
 		{
 			SyncStageFilterItems();
 			_groupButton.Checked = StageSettings.Instance.GroupByStage;
-			_autoEditedByButton.Checked = StageSettings.Instance.AutoEditedBy;
 			DataGridViewComboBoxColumn stageColumn = _grid.Columns[ColStage] as DataGridViewComboBoxColumn;
 			List<string> names = StageSettings.Instance.Names;
 			// К настроенным стадиям добавляем неизвестные значения из проекта —
@@ -314,7 +283,6 @@ public class SheetGridControl : UserControl
 				column.ReadOnly = column.Index != ColStage;
 			}
 			_grid.Columns[ColStage].ReadOnly = !Bridge.CanEditStage;
-			_autoButton.Enabled = Bridge.CanEditStage;
 			bool editable = !_grid.Columns[ColStage].ReadOnly;
 			if (editable != _lastEditable)
 			{
@@ -325,7 +293,6 @@ public class SheetGridControl : UserControl
 			_status.Text = Bridge.Message;
 			_status.ForeColor = (Bridge.CanEditStage ? Color.FromArgb(150, 90, 0) : Color.FromArgb(190, 30, 30));
 			_diagButton.Enabled = Bridge.HasDocument;
-			_unsetButton.Enabled = Bridge.CanEditStage;
 			_createParamButton.Enabled = Bridge.HasDocument && !Bridge.CanEditStage;
 			if (Bridge.PendingCount > 0)
 			{
@@ -396,7 +363,6 @@ public class SheetGridControl : UserControl
 			StageSettings stageSettings = StageSettings.Instance;
 			stageSettings.GroupByStage = _groupButton.Checked;
 			stageSettings.FilterStage = CurrentStageFilter();
-			stageSettings.AutoEditedBy = _autoEditedByButton.Checked;
 			stageSettings.Save();
 		}
 		catch (Exception ex)
@@ -944,15 +910,5 @@ public class SheetGridControl : UserControl
 		Log.Write("=== ДИАГНОСТИКА ===");
 		Log.Write(message);
 		MessageBox.Show(message, "Цветные листики — диагностика параметра", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
-	}
-
-	private void OnColorsClick(object sender, EventArgs e)
-	{
-		using SheetColorsForm sheetColorsForm = new SheetColorsForm();
-		if (sheetColorsForm.ShowDialog() == DialogResult.OK)
-		{
-			StageSettings.Instance.Save();
-			RefreshNow();
-		}
 	}
 }
