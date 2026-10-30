@@ -10,6 +10,6 @@
     <Copy SourceFiles="$(AddinFile)" DestinationFolder="$(DeployDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(DeployLibDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(OutputPath)ColorLeaves.Core.dll" DestinationFolder="$(DeployLibDir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\sheet.png;$(MSBuildProjectDirectory)\Resources\refresh.png;$(MSBuildProjectDirectory)\Resources\colors.png;$(MSBuildProjectDirectory)\Resources\parameter.png;$(MSBuildProjectDirectory)\Resources\settings.png" DestinationFolder="$(DeployLibDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Resources\sheet.png;$(MSBuildProjectDirectory)\Resources\parameter.png;$(MSBuildProjectDirectory)\Resources\settings.png" DestinationFolder="$(DeployLibDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

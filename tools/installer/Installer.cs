@@ -33,9 +33,8 @@ namespace ColorLeaves.Installer
             "ColorLeaves.Revit.dll",
             "ColorLeaves.Core.dll",
             "sheet.png",
-            "refresh.png",
-            "colors.png",
-            "parameter.png"
+            "parameter.png",
+            "settings.png"
         };
 
         // Файлы старой плоской раскладки (до версии 1.4.1) в корне Addins — вычищаются
