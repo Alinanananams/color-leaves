@@ -85,6 +85,8 @@ public class SheetGridControl : UserControl
 		ToolStrip toolStrip = new ToolStrip();
 		toolStrip.GripStyle = ToolStripGripStyle.Hidden;
 		toolStrip.RenderMode = ToolStripRenderMode.System;
+		toolStrip.LayoutStyle = ToolStripLayoutStyle.Flow;
+		toolStrip.Stretch = true;
 		_search = new ToolStripTextBox();
 		_search.AutoSize = false;
 		_search.Width = 150;
@@ -219,7 +221,7 @@ public class SheetGridControl : UserControl
 		DataGridViewTextBoxColumn numberColumn = new DataGridViewTextBoxColumn();
 		numberColumn.HeaderText = "№ листа";
 		numberColumn.Name = "Number";
-		numberColumn.Width = 150;
+		numberColumn.Width = 110;
 		numberColumn.SortMode = DataGridViewColumnSortMode.NotSortable;
 		DataGridViewTextBoxColumn nameColumn = new DataGridViewTextBoxColumn();
 		nameColumn.HeaderText = "Наименование";
